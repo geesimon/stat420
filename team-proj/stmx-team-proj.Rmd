@@ -1,0 +1,101 @@
+---
+title: "Proposal: Residential Housing Price Prediction"
+author: "STAT 420, Summer 2017, Martynas Sapoka, Shailender Singh, Tesa Ho, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+
+#Overview
+
+We propose to create a linear model that can predict residential home prices in Ames, Iowa based on several explanatory variables.  This project is a practical example of using real world data that consists of a mix of different data types - nominal, ordinal, discrete, and continuous variables. 
+
+Our final project will incorporate the following topics covered in this course: 
+
+- Variable manipulation
+- Outlier identification
+- Data analysis and interpretation
+- Model building
+- Model evaluation
+
+#Description of Dataset
+
+The data set describes the sale of individual residential property in Ames, Iowa from 2006 to 2010 and contains 2,919 observations.  There are 80 explanatory variables (23 nominal, 23 ordinal, 14 discrete, and 20 continuous) involved in assessing home values.
+
+The 23 nominal variables identify various types of dwellings, materials, garages, and environmental conditions.
+
+The 23 ordinal variables range from 2 to 28 representing Streets (gravel or paved) and Neighborhoods (areas within the Ames city limits).
+
+The 14 discrete variables quantify the number of items for each house.  Items include the number of kitchens, bedrooms, bathrooms, garage spaces and their respective location if the house has more than one floor. 
+
+The 20 continuous variables are related to area dimensions for each house.  Variables include total dwelling square footage, total lot size, living area, and room dimensions. 
+
+Some important variables that may have strong correlation with sale price.
+
+- `MSZoning`: Identifies the general zoning classification of the sale.
+- `LotArea`:  Lot size in square feet.
+- `OverallQual`: Overall material and finish quality.
+- `TotalBsmtSF`: Total square feet of basement area.
+- `YearBuilt`: Original construction date.
+- `BedroomAbvGr`: Bedrooms above grade (does NOT include basement bedrooms).
+- `BsmtFullBath`:  Full bathrooms above grade.
+- `GarageCars`: Size of garage in car capacity.
+
+#Dataset Source
+
+Inspired by [`Kaggle Competition`](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), the data set is provided by Dean De Cock from Truman State University.  The raw data comes directly from the Iowa State Assessorʻs Office. The initial Excel file contained 113 variables describing 3,970 property sales that had occurred in Ames, Iowa between 2006 and 2010. 
+The variables were a mix of nominal, ordinal, continuous, and discrete variables used in calculation of assessed values and included physical property measurements in addition to computation variables used in the city’s assessment process. Variables that required specific housing or assessing knowledge or previous calculations were removed from the final dataset.  
+
+
+#Firstlook of the Data
+
+We load the data and check the first few values of the response variable.
+```{r, message=FALSE}
+library(readr)
+house_data = read_csv("HousePrices/train.csv")
+
+head(house_data[,c("SalePrice", "MSZoning", "LotArea", "OverallQual",
+                   "TotRmsAbvGrd", "YearBuilt", "BedroomAbvGr", "BsmtFullBath",
+                   "GarageCars")])
+price_model = lm(SalePrice ~ LotArea, data = house_data)
+```
+
+Let's fit the data with a simple regression model with SalePrice as response and log(LotArea) as predictor.
+```{r}
+price_model_log = lm(SalePrice ~ log(LotArea), data = house_data)
+```
+```{r, echo=FALSE}
+plot(SalePrice ~ log(LotArea), data = house_data, col = "grey", pch = 20,
+     main = "SalePrice by Log(LotArea)")
+abline(price_model_log, col = "darkorange", lwd = 3)
+```
+
+The regression line does show some fit with the data.
+
+We use the corrplot package in combination with the cor() function to plot the correlations between selected predictors.
+```{r, echo=FALSE}
+library(corrplot)
+colunms = c("SalePrice", "LotArea", "MSSubClass", "MSZoning", "LotConfig")
+house_data_reg = with(house_data, data.frame(SalePrice, LotArea, 
+                                             MSSubClass = as.numeric(as.factor(MSSubClass)),
+                                             MSZoning = as.numeric(as.factor(MSZoning)), 
+                                             LotConfig = as.numeric(as.factor(LotConfig)),
+                                             Neighborhood = as.numeric(as.factor(Neighborhood)), 
+                                             BldgType = as.numeric(as.factor(BldgType)),
+                                             HouseStyle = as.numeric(as.factor(HouseStyle)),
+                                             OverallQual = as.numeric(as.factor(OverallQual)),
+                                             OverallCond = as.numeric(as.factor(OverallCond)),
+                                             YearBuilt, YearRemodAdd,
+                                             RoofStyle = as.numeric(as.factor(RoofStyle)),
+                                             ExterQual = as.numeric(as.factor(ExterQual)),
+                                             ExterCond = as.numeric(as.factor(ExterCond)),
+                                             TotalBsmtSF, FullBath, BedroomAbvGr, 
+                                             KitchenAbvGr, Fireplaces, GarageCars))
+
+corrplot(cor(house_data_reg), method="circle")
+```
+
+The test shows `OverallQual`, `TotalBsmtSF`, `YearBuilt`, `YearRemodAdd`, `ExterQual`, `FullBath`, `Fireplaces` has strong correlation with `SalePrice`.

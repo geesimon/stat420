@@ -1,0 +1,652 @@
+---
+title: "Simulation Project by Xiaoming Ji"
+author: "STAT 420, Summer 2017, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+## Simulation Study 1, Estimate Distributions
+
+### Introduction
+In this simulation study we will investigate the distribution of regression estimates $\hat{\beta}_1$, $s_e^2$ and $\hat{\text{E}}[Y]$ from MLR model,
+
+$$
+Y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \beta_3 x_{i3}  + \beta_4 x_{i4} + \epsilon_i
+$$
+
+where $\epsilon_i \sim N(0, \sigma^2)$.
+
+We will discuss how these estimates relate to true distributions and the impact of different noise.
+
+### Methods
+
+#### Setup
+Assuming we have the known parameters for this MLR model,
+
+- $\beta_0 = 2$
+- $\beta_1 = 1$
+- $\beta_2 = 1$
+- $\beta_3 = 1$
+- $\beta_4 = 1$
+- $\sigma \in (1, 5, 10)$
+
+To investigate how the estimated parameters relate to these known parameters, we will simulate the training data from the sample data found in [`study_1.csv`](study_1.csv). We will predict $\hat{\text{E}}[Y]$ from the following $x_{eval}$:
+
+- $x_1 = -3, x_2 = 2.5, x_3 = 0.5, x_4 = 0$, 
+
+To start, we initialize the seed, set constants, load data and allocate memory for these estimates.
+.
+```{r, message=FALSE}
+library(readr)
+
+birthday = 19720816
+set.seed(birthday)
+
+BETA_0 = 2
+BETA_1 = 1
+BETA_2 = 1
+BETA_3 = 1
+BETA_4 = 1
+SIGMA  = c(1, 5, 10)
+X_EVAL = c(1, -3, 2.5, 0.5, 0)
+
+NUM_SIMS = 3000
+
+sim_data = read_csv("study_1.csv")
+sample_size = nrow(sim_data)
+
+DF = sample_size - length(X_EVAL)
+
+beta_hat_1  = matrix(data = 0, nrow = NUM_SIMS, ncol = length(SIGMA))
+se_squared  = matrix(data = 0, nrow = NUM_SIMS, ncol = length(SIGMA))
+y_hat_eval  = matrix(data = 0, nrow = NUM_SIMS, ncol = length(SIGMA))
+```
+
+#### Model Analysis
+As we know, given a known MLR model, we have $\hat{\beta}$ distribution as,
+
+$$
+\hat{\beta} \sim N\left(\beta, \sigma^2 \left(X^\top X\right)^{-1}  \right)
+$$ 
+We then have,
+$$
+\text{SD}[\hat{\beta}_1] = \sigma\sqrt{C_{22}}
+$$
+Where,
+$$
+C = \left(X^\top X\right)^{-1}
+$$
+
+For $\hat{y}(x)$, we have, 
+$$
+\hat{y}(x) \sim N \left(x^\top\beta, \sigma^2\left(x^\top\left(X^\top X\right)^{-1}x\right) \right)
+$$
+We then have,
+$$
+\text{E}[\hat{y}(x)] = x^\top\beta
+$$
+and,
+$$
+\text{SD}[\hat{y}(x)] = \sigma \sqrt{x^\top\left(X^\top X\right)^{-1}x}
+$$
+For $s_e$, we know $\frac{(n-p)s_e^2}{\sigma^2}$ follows Chi-squared distribution with $(n-p)$ degrees of freedom. In our model, $n=15$, $p=5$, thus $df=10$. We then have,
+$$
+\frac{`r DF`s_e^2}{\sigma^2} \sim \chi_{`r DF`}^2
+$$
+
+Let's compute the **true** $\text{SD}[\hat{\beta_1}]$, $\text{E}[\hat{y}(x_{eval})]$ and $\text{SD}[\hat{y}(x_{eval})]$ for each $\sigma$.
+
+```{r}
+sd_beta_hat_1_true = rep(0, length(SIGMA))
+sd_y_hat_eval_true = rep(0, length(SIGMA))
+y_hat_eval_true    = (t(X_EVAL) %*% c(BETA_0, BETA_1, BETA_2, BETA_3, BETA_4))[1]
+
+X = cbind(rep(1, sample_size), sim_data$x1, sim_data$x2, sim_data$x3, sim_data$x4)
+C = solve(t(X) %*% X)
+
+for (i in 1:length(SIGMA)) {
+  sd_beta_hat_1_true[i] = SIGMA[i] * sqrt(C[2, 2])
+  sd_y_hat_eval_true[i] = SIGMA[i] * sqrt(t(X_EVAL) %*% C %*% X_EVAL)
+}
+```
+
+#### Simulation
+We now perform the simulation **`r NUM_SIMS`** times for each $\sigma$. Each time, we update the $y$ variable in the data frame, leaving the $x$ variables the same. We then fit a model, and store the empirical $\hat{\beta}_1$, $s_e^2$ and $\hat{y}(x_{eval})$.
+
+```{r}
+for (s in 1:length(SIGMA)) {
+  for (i in 1:NUM_SIMS) {
+    eps           = rnorm(sample_size, mean = 0 , sd = SIGMA[s])
+    sim_data$y    = BETA_0 + BETA_1 * sim_data$x1 + BETA_2 * sim_data$x2 + 
+                    BETA_3 * sim_data$x3 + BETA_4 * sim_data$x4 + eps
+    fit           = lm(y ~ ., data = sim_data)
+    
+    beta_hat_1[i, s]  = coef(fit)[2]
+    se_squared[i, s]  = sum(fit$residuals ^ 2) / DF
+    y_hat_eval[i, s]  = predict(fit, newdata = data.frame(x1 = X_EVAL[2], x2 = X_EVAL[3],
+                                                          x3 = X_EVAL[4], x4 = X_EVAL[5] ))
+  }
+}
+```
+
+### Results
+We list the empirical $\text{E}[\hat{\beta}_1]$, $\text{E}[s_e^2]$ and $\text{E}[\hat{y}(x_{eval})]$ as following table.
+
+```{r}
+mean_beta_hat_1 = c(mean(beta_hat_1[,1]), mean(beta_hat_1[,2]), mean(beta_hat_1[,3]))
+sd_beta_hat_1   = c(sd(beta_hat_1[,1]), sd(beta_hat_1[,2]), sd(beta_hat_1[,3]))
+mean_y_hat_eval = c(mean(y_hat_eval[,1]), mean(y_hat_eval[,2]), mean(y_hat_eval[,3]))
+sd_y_hat_eval   = c(sd(y_hat_eval[,1]), sd(y_hat_eval[,2]), sd(y_hat_eval[,3]))
+mean_se_squared = c(mean(se_squared[,1]), mean(se_squared[,2]), mean(se_squared[,3]))
+
+table_data = data.frame(BETA_1, mean_beta_hat_1, SIGMA ^ 2, mean_se_squared,
+                        y_hat_eval_true, mean_y_hat_eval)
+library("knitr")
+kable(table_data, col.names = c("$\\beta_1$", "$\\text{E}[\\hat{\\beta}_1]$",
+                                "$\\sigma^2$", "$\\text{E}[s_e^2]$", "$\\hat{y}$", 
+                                "$\\text{E}[\\hat{y}(x_{eval})]$"),
+      caption = "Table 1")
+```
+
+According to these results, we can conclude that 
+
+- The empirical $\text{E}[\hat{\beta}_1]$ is very close to $\beta_1$
+- The empirical $\text{E}[s_e^2]$ is very close to $\sigma^2$
+- The empirical $\text{E}[\hat{y}(x_{eval})]$ is close to the true estimate of $\hat{y} = `r y_hat_eval_true`$ when $\sigma=`r SIGMA[1]`$, but a little disappoiting when $\sigma$ get larger.
+
+Let's plot the histograms of the empirical values, and overlap the true distributions if appropriate.
+
+```{r fig.width = 12, fig.height = 12}
+plot_legend = function (title, showTrue = TRUE) {
+  plot.new()
+  plot.window(c(0,10), c(0,10))
+  text(5, 0.5, title, 
+      col = "black", cex = 2)
+  rect(0, 3, 2, 4, border = "dodgerblue")
+  text(4.5, 3.5, "Empirical distribution", cex = 1.5)
+  if(showTrue) {
+    lines(c(0, 2), c(2,2), col = "darkorange", lwd = 3)
+    text(4, 2, "True distribution", cex = 1.5)    
+  }
+}
+
+par(mfrow = c(2,2))
+
+for (i in 1:length(SIGMA)) {
+  #Fix the curve crop problem
+  if(i != 3){
+    hist(beta_hat_1[,i], prob = TRUE, breaks = 20, 
+         xlab = expression(hat(beta)[1]), 
+         main = substitute(sigma==value,list(value=SIGMA[i])), 
+        border = "dodgerblue")    
+  } else {
+      hist(beta_hat_1[,i], prob = TRUE, breaks = 20, 
+          ylim = c(0, 0.25),
+          xlab = expression(hat(beta)[1]), 
+          main = substitute(sigma==value,list(value=SIGMA[i])), 
+          border = "dodgerblue")
+  }
+  curve(dnorm(x, mean = BETA_1, sd = sd_beta_hat_1_true[i]), 
+        col = "darkorange", add = TRUE, lwd = 3)
+}
+plot_legend(expression(paste("Distribution of ", hat(beta)[1], " by different ", sigma)))
+```
+
+```{r fig.width = 12, fig.height = 12}
+par(mfrow = c(2,2))
+
+for (i in 1:length(SIGMA)) {
+  hist(y_hat_eval[,i], prob = TRUE, breaks = 20, 
+       xlab = expression(hat(y)), main = substitute(sigma==value,list(value=SIGMA[i])),
+       border = "dodgerblue")
+  curve(dnorm(x, mean = y_hat_eval_true, sd = sd_y_hat_eval_true[i]), 
+        col = "darkorange", add = TRUE, lwd = 3)
+}
+
+plot_legend(expression(paste("Distribution of ", hat(y), " by different ", sigma)))
+```
+
+```{r fig.width = 12, fig.height = 12}
+par(mfrow = c(2,2))
+
+
+for (i in 1:length(SIGMA)) {
+  hist(se_squared[,i], prob = TRUE, breaks = 20, 
+       xlab = expression(s[e]^2), main = substitute(sigma==value,list(value=SIGMA[i])),
+       border = "dodgerblue")
+}
+
+plot_legend(expression(paste("Distribution of ", s[e]^2, " by different ", sigma)), FALSE)
+```
+
+**Note:** We don't plot the true distribution of $s_e^2$ in the above diagrams because $\frac{10s_e^2}{\sigma^2}$ follow a Chi-squared distribution,
+$$
+\frac{10s_e^2}{\sigma^2} \sim \chi_{10}^2
+$$
+and we want to show the real value distribution of $s_e^2$.
+
+To illustrate how the empirical distribution fit the true Chi-squared distribution, we will need to recalculte $\frac{10s_e^2}{\sigma^2}$ and plot.
+
+```{r fig.width = 12, fig.height = 12}
+par(mfrow = c(2,2))
+
+se_chi_squared = se_squared
+for (i in 1:length(SIGMA)){
+  se_chi_squared[, i] = (se_chi_squared[, i] * DF ) / SIGMA[i] ^ 2
+}
+
+for (i in 1:length(SIGMA)) {
+  hist(se_chi_squared[, i], prob = TRUE, breaks = 20, ylim = c(0, 0.1),
+       xlab = substitute(value*s[e]^2, list(value = DF/SIGMA[i]^2)), 
+       main = substitute(sigma==value*" and "*chi[df]^2, list(value = SIGMA[i], df=DF)), 
+       border = "dodgerblue")
+  curve(dchisq(x, df = DF), add = TRUE, col = "darkorange", lwd = 3)
+}
+
+plot_legend(substitute("Illustrate distribution of "*frac(DF*s[e]^2, sigma^2), list(DF=DF)))
+```
+
+### Discussion
+**(A)** What are the true distributions of these estimates?
+
+As described in the *Model Analysis* section, the true distribution for $\hat{\beta_1}$,
+$$
+\hat{\beta_{1true}}(\sigma=`r SIGMA[1]`) \sim N\left(`r BETA_1`, `r sd_beta_hat_1_true[1] ^ 2` \right)
+$$
+$$
+\hat{\beta_{1true}}(\sigma=`r SIGMA[2]`) \sim N\left(`r BETA_1`, `r sd_beta_hat_1_true[2] ^ 2` \right)
+$$
+$$
+\hat{\beta_{1true}}(\sigma=`r SIGMA[3]`) \sim N\left(`r BETA_1`, `r sd_beta_hat_1_true[3] ^ 2` \right)
+$$
+For $\hat{y}(x_{eval})$,
+$$
+\hat{y_{true}}(x_{eval}) (\sigma=`r SIGMA[1]`) \sim N \left(`r y_hat_eval_true`,  `r sd_y_hat_eval_true[1] ^2` \right)
+$$
+$$
+\hat{y_{true}}(x_{eval}) (\sigma=`r SIGMA[2]`) \sim N \left(`r y_hat_eval_true`,  `r sd_y_hat_eval_true[2] ^2` \right)
+$$
+$$
+\hat{y_{true}}(x_{eval}) (\sigma=`r SIGMA[3]`) \sim N \left(`r y_hat_eval_true`,  `r sd_y_hat_eval_true[3] ^2` \right)
+$$
+We don't have directly true distribution of $s_e^2$, but it follows, 
+$$
+`r 10/SIGMA[1] ^2`s_e^2 (\sigma=`r SIGMA[1]`) \sim \chi_{10}^2
+$$
+$$
+`r 10/SIGMA[2] ^2`s_e^2 (\sigma=`r SIGMA[2]`) \sim \chi_{10}^2
+$$
+$$
+`r 10/SIGMA[3] ^2`s_e^2 (\sigma=`r SIGMA[3]`) \sim \chi_{10}^2
+$$
+
+**(B)**How do the empirical distributions from the simulations compare to the true distributions?
+
+The plots show the empirical distributions fit very well to the true distribution. Let's list and compare these values. 
+
+```{r}
+table_data = data.frame(BETA_1, mean_beta_hat_1, sd_beta_hat_1_true, sd_beta_hat_1, 
+                        SIGMA ^ 2, mean_se_squared,
+                        y_hat_eval_true, mean_y_hat_eval, sd_y_hat_eval_true, sd_y_hat_eval)
+library("knitr")
+kable(table_data, col.names = c("$\\hat{\\beta_{1true}}$", "$\\text{E}[\\hat{\\beta}_1]$", 
+                                "$\\text{SD}[\\hat{\\beta}_{1true}]$", "$\\text{SD}[\\hat{\\beta}_1]$",
+                                "$\\sigma^2$", "$\\text{E}[s_e^2]$", 
+                                "$\\hat{y_{true}}$", "$\\text{E}[\\hat{y}(x_{eval})]$", 
+                                "$\\text{SD}[\\hat{y_{true}}(x_{eval})]$", "$\\text{SD}[\\hat{y}(x_{eval})]$"),
+      caption = "Table 2")
+```
+
+- The empirical expectations and variances of $\hat{\beta_1}$ are pretty close to the true values. 
+- The variances of empirical $\hat{y}(x_{eval})$ have good match to the true values. However, the expecations have considerable errors when $\sigma$ is large. 
+- $s_e^2$ has good estimate of $\sigma^2$, the plot shows $\frac{`r DF`s_e^2}{\sigma^2}$ fit the Chi-squred distribution perfectly.
+- We could improve the results by increasing the sample size and simulation time.
+
+**(C)** How do the distributions change when $\sigma$ is changed?
+
+- According to the results, when $\sigma$ increase, the variance of estimates also increase.
+- According to table 2, $\sigma=`r SIGMA[1]`$ give us the best estimates. 
+- Its a little counter intuitive that not all estimates of smaller $\sigma=`r SIGMA[2]`$ are better than larger $\sigma=`r SIGMA[3]`$. In our case, only $s_e^2$ is better.Thus, we **may not** conclude that the estimates will always get worse when $\sigma$ increases.
+
+## Simulation Study 2, RMSE for Selection?
+### Introduction
+In this study, we will investigate the use of RMSE to select the best MLR model. We will see compare RMSE cannot garantee the best model and will also discuss the impact of different noise.
+
+### Methods
+#### Setup
+Assuming we have the known best MLR model,
+$$
+Y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \beta_3 x_{i3} + \beta_4 x_{i4} + \beta_5 x_{i5} + \epsilon_i
+$$
+where,
+
+- $\beta_0 = 0$
+- $\beta_1 = 6$
+- $\beta_2 = -3.5$
+- $\beta_3 = 1.7$
+- $\beta_4 = -1.1$
+- $\beta_5 = 0.7$
+- $\epsilon_i \sim N(0, \sigma^2)$
+- $\sigma \in (1, 2, 4)$
+
+We will try to find this best model from the nine candidates with forms:
+
+- y ~ x1
+- y ~ x1 + x2
+- y ~ x1 + x2 + x3
+- y ~ x1 + x2 + x3 + x4
+- y ~ x1 + x2 + x3 + x4 + x5, the correct form of the model
+- y ~ x1 + x2 + x3 + x4 + x5 + x6
+- y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7
+- y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8
+- y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9
+
+To start, we initialize the seed, set constants, load data and allocate memory for these estimates.
+```{r, message=FALSE}
+library(readr)
+
+birthday = 19720816
+set.seed(birthday)
+
+BETA_0 = 0
+BETA_1 = 6
+BETA_2 = -3.5
+BETA_3 = 1.7
+BETA_4 = -1.1
+BETA_5 = 0.7
+
+FORMULA = list(y ~ x1, 
+              y ~ x1 + x2, 
+              y ~ x1 + x2 + x3,
+              y ~ x1 + x2 + x3 + x4,
+              y ~ x1 + x2 + x3 + x4 + x5, #Correct formula
+              y ~ x1 + x2 + x3 + x4 + x5 + x6,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7, 
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9)
+NUM_FORMULA = length(FORMULA)
+
+sim_data    = read_csv("study_2.csv")
+sample_size = nrow(sim_data)
+
+SIGMA     = c(1, 2, 4)
+NUM_SIGMA = length(SIGMA)
+
+NUM_SIMS = 500
+
+#allocate a rmse matrix for each formula
+train_rmse = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  train_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_train_rmse = data.frame(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+
+test_rmse  = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  test_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_test_rmse = matrix(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+```
+
+#### Simulation
+We will simulate from the best model with the sample data found in [`study_2.csv`](study_2.csv) (600 records) and three possible levels of noise.
+
+- $n = 600$
+- $\sigma \in (1, 2, 4)$
+
+Each time we simulate the data, we randomly split the data into train and test sets of equal sizes (300 observations for training, 300 observations for testing).
+
+For each model, calculate Train and Test RMSE.
+$$
+\text{RMSE}(\text{model, data}) = \sqrt{\frac{1}{n} \sum_{i = 1}^{n}(y_i - \hat{y}_i)^2}
+$$
+Repeat this process with 500 simulations for each of the 3 values of $\sigma$ and we have fit $9×3×500=13500$ models.
+```{r}
+cal_rmse = function(y, y_hat) {
+  n = length(y)
+  e = y - y_hat
+  sqrt(sum(e ^ 2) / n)
+}
+  
+for (f in 1:NUM_FORMULA) {
+  models = vector("list", NUM_FORMULA)
+  
+  for(s in 1:NUM_SIGMA) {
+    for(i in 1:NUM_SIMS) {
+      eps           = rnorm(sample_size, mean = 0 , sd = SIGMA[s])
+      sim_data$y    = BETA_0 + BETA_1 * sim_data$x1 + BETA_2 * sim_data$x2 + 
+                      BETA_3 * sim_data$x3 + BETA_4 * sim_data$x4 + BETA_5 * sim_data$x5 + 
+                      eps
+      
+      #Split data into train and test sets
+      train_index = sample(1:sample_size, nrow(sim_data)/2)
+      train_data  = sim_data[train_index,]
+      test_data   = sim_data[-train_index,]
+      
+      #Train models and calculate RMSE
+      models[[f]] = lm(FORMULA[[f]], data = train_data)
+        
+      #Calculate RMSE for train data
+      train_rmse[[f]][s, i] = cal_rmse(train_data$y, models[[f]]$fitted.values)
+  
+      #Calculate RMSE for test data
+      test_y_hat = predict(models[[f]], data = test_data)
+      test_rmse[[f]][s, i] = cal_rmse(test_data$y, test_y_hat)
+    }
+    
+    #Calculate the average Train RMSE and average Test RMSE
+    mean_train_rmse[f, s] = mean(train_rmse[[f]][s,])
+    mean_test_rmse[f, s]  = mean(test_rmse[[f]][s,])
+  }
+}
+```
+
+### Results
+Let's draw the results in plots to compare the average RMSE of train and test data by different $\sigma$ and models,
+```{r fig.width = 12, fig.height = 12}
+par(mfrow = c(2,2))
+
+for (i in 1:NUM_SIGMA){
+  barplot(t(mean_test_rmse)[i,], names.arg = c("1", "2", "3","4", "5", "6","7", "8", "9" ),
+          xlab = "Models",
+          ylab = "Average RMSE",
+          main = substitute(sigma==value,list(value=SIGMA[i])),
+          col = "dodgerblue")
+  
+  barplot(t(mean_train_rmse)[i,], col = "grey", add = TRUE)
+}
+
+plot.new()
+plot.window(c(0,10), c(0,10))
+text(5, 0.5, substitute("RMSE by different " * sigma), 
+      col = "black", cex = 2)
+rect(0, 3, 2, 4, col = "dodgerblue")
+text(4, 3.5, "Test RMSE", cex = 1.5)
+rect(0, 5, 2, 6, col = "grey")
+text(4, 5.5, "Train RMSE", cex = 1.5)
+```
+
+**Note:** We overlap the values of train and test RMSE in same map for easy comparison.
+
+The results show,
+
+- For a given $\sigma$, the differences of avearge RMSE among all nine models are small ((max - min) / max < 7%).
+- For any $\sigma$, model 5 never has the minimum average RMSE from both the train and test data.
+
+Therefore, we can conclude that **minimum RMSE cannot garantee to indicate the best model**.
+
+### Discussion
+**(A)** Does the method **always** select the correct model? On average, does is select the correct model?
+
+**No.** As illustrated in our study, minimum RMSE won't always indicate the correct model especially when the RMSE among models are very close. On average, RMSE can help to select the correct model if the differences of RMSE are significant.
+
+**(B)**How does the level of noise affect the results?
+
+For given a $\sigma$, averages RSME of all models are,
+
+- `r mean(t(mean_test_rmse)[1,])` ($\sigma=`r SIGMA[1]`$)
+- `r  mean(t(mean_test_rmse)[2,])` ($\sigma=`r SIGMA[2]`$)
+- `r mean(t(mean_test_rmse)[3,])` ($\sigma=`r SIGMA[3]`$)
+
+Therefore, we say RMSE will increase when noise ($\sigma$) increase. 
+
+It may be obvious that by checking the result of **train** data, the overall RMSE difference among models descrease when noise ($\sigma$) increase. However, it is not always the case for the test data. The max/min RMSE differences are,
+
+- `r max(t(mean_test_rmse)[1,])-min(t(mean_test_rmse)[1,])` ($\sigma=`r SIGMA[1]`$)
+- `r max(t(mean_test_rmse)[2,])-min(t(mean_test_rmse)[2,])` ($\sigma=`r SIGMA[2]`$)
+- `r max(t(mean_test_rmse)[3,])-min(t(mean_test_rmse)[3,])` ($\sigma=`r SIGMA[3]`$)
+
+## Simulation Study 3, Power
+### Introduction
+In this study, we will exam how power of SLR is affected by factors
+
+- Signal Strength, $\beta_1$
+- Noise Level, $\sigma$
+- Significance Level, $\alpha$
+
+We estimate power use 
+$$
+\hat{\text{Power}} = \hat{P}[\text{Reject } H_0 \mid H_1 \text{ True}] = \frac{\text{# Tests Rejected}}{\text{# Simulations}}
+$$
+where
+$$
+H_0: \beta_{1} = 0 \ \text{vs} \ H_1: \beta_{1} \neq 0
+$$
+
+### Methods
+#### Setup
+Assuming we have the a SLR model
+$$
+Y_i = \beta_0 + \beta_1 x_i + \epsilon_i
+$$
+where $\epsilon_i \sim N(0, \sigma^2)$.
+
+For simplicity, we will let $\beta_0 = 0$, thus $\beta_1$ is essentially controlling the amount of “signal.” We will then consider different signals and noises
+ 
+- $\beta_1 \in (0, 0.1, 0.2, 0.3, 3)$
+- $\sigma \in (1, 2, 4)$
+
+As well as three significance levels:
+
+- $\alpha \in (0.01, 0.05, 0.10)$
+
+To start, we initialize the seed and set constants.
+```{r}
+birthday = 19720816
+set.seed(birthday)
+
+BETA_0  = 0
+BETA_1  = c(0, 0.1, 0.2, 0.3, 3)
+SIGMA   = c(1,2,4)
+ALPHA   = c(0.01,0.05,0.10)
+
+NUM_SIMS   = 1000
+
+sample_size = 25
+x_values    = seq(0, 5, length = sample_size)
+```
+#### Simulation
+For each possible $\beta_1$ and $\sigma$ combination, we simulate from the true model 1000 times. Each time perform the significance of the regression test. We store the result to a data frame for later usage.
+```{r}
+calc_power = function() {
+  NUM_BETA_1 = length(BETA_1)
+  NUM_SIGMA  = length(SIGMA)
+  NUM_ALPHA  = length(ALPHA)
+  result = data.frame()
+    
+  for (s in 1:NUM_SIGMA) {
+    for (b in 1:NUM_BETA_1) {
+      reject_num = rep(0, NUM_ALPHA)
+        
+      p_values  = rep(0, NUM_SIMS)
+      for (i in 1:NUM_SIMS) {
+        eps      = rnorm(sample_size, mean = 0 , sd = SIGMA[s])
+        y_values = BETA_0 + BETA_1[b] * x_values  + eps
+          
+        model    = lm(y_values ~ x_values)
+          
+        p_values[i] = summary(model)$coefficient["x_values","Pr(>|t|)"]
+      }
+        
+      for (a in 1:NUM_ALPHA) {
+        power  = sum(p_values < ALPHA[a]) / NUM_SIMS
+        result = rbind(result, data.frame(sigma = SIGMA[s], beta_1 = BETA_1[b],
+                                          alpha = ALPHA[a], power = power))
+      }
+    }
+  }
+  
+  result
+}
+
+result = calc_power()
+```
+
+### Results
+Let's create three plots, one for each value of $\sigma$. Within each of these plots, we add a “power curve” for each value of $\alpha$ that shows how power is affected by signal strength $\beta_1$.
+
+```{r fig.width = 12, fig.height = 12}
+plot_power = function (data) {
+  NUM_SIGMA  = length(SIGMA)
+  NUM_ALPHA  = length(ALPHA)
+  line_colors = c("dodgerblue", "darkorange", "red")
+  par(mfrow = c(2,2))
+  
+  for (s in 1:NUM_SIGMA){
+    data_by_sigma = data[data$sigma == SIGMA[s],]
+    
+    plot(data_by_sigma$power ~ data_by_sigma$beta_1,
+         xlab = expression(beta[1]), ylab = "Power",
+         main = substitute(sigma==value,list(value=SIGMA[s])))
+    
+    for (i in 1:NUM_ALPHA) {
+      data_by_alpha = data_by_sigma[data_by_sigma$alpha == ALPHA[i], ]
+      lines(data_by_alpha$beta_1, data_by_alpha$power, col = line_colors[i], lwd = 3)
+    }
+    
+    lengend_str = c(substitute(alpha==value1, list(value1=ALPHA[1])), 
+                    substitute(alpha==value2, list(value2=ALPHA[2])), 
+                    substitute(alpha==value3, list(value3=ALPHA[3])))
+    legend("bottomright", lwd = 3, col = line_colors, legend = lengend_str)
+  }
+  
+  plot.new()
+  plot.window(c(0,10), c(0,10))
+  text(5, 0.5, substitute("Power by different " * sigma), cex = 2)
+}
+
+plot_power(result)
+```
+
+### Discussion
+**(A)** How do $\alpha$, $\beta_1$, and $\sigma$ affect power? 
+
+According to the plots above, its obvious $\alpha$, $\beta_1$, and $\sigma$ affect power significantly. Specifically, 
+
+- When $\alpha$ **increase**, power also **increase**. Since $\alpha$ is used to measure significance of regression test, larger $\alpha$ means we would reject more $H_0$, thus give us larger power.
+- When $\beta_1$ **increase**, power also **increase**. Essentially, power is the probability that a signal of a particular strength will be detected. $\beta_1$ is considered as "signal" and larger signal is more easier to be detected. When $\beta_1$ is big enough (3 in our study), the power will converge to 1.
+- When $\sigma$ **increase**, power **decrease**. This also makes sense since $\sigma$ is considered as "noise". Strong "noise" will bury  "signal" and thus make "signal" harder to be detected.  
+
+Let's decrease the $\beta_1$ range for better illustration.
+```{r fig.width = 12, fig.height = 12}
+BETA_1  = c(0, 0.1, 0.2, 0.3, 1)
+
+plot_power(calc_power())
+```
+
+**(B)** Are 1000 simulations sufficient?
+
+Yes. Although more simulations usually give us less estimation error, we can see very stable and obvious trend from the output with 1000 simulations. Increase simulation times won't give us much benefit for this study. 
+
+In another hand, reducing the simulation time would make our conclusion not that obvious. For example, let's reduce the simulation to 100 and redraw the results.
+
+```{r fig.width = 12, fig.height = 12}
+NUM_SIMS   = 100
+
+plot_power(calc_power())
+```
+
+According to the plots, we do find some bumps (especially when $\sigma$ is large and $\beta_1$ is small) which make the trend on the slope not that obvious.

@@ -1,0 +1,281 @@
+---
+title: "Proposal: Residential Housing Price Prediction"
+author: "STAT 420, Summer 2017, Martynas Sapoka, Shailender Singh, Tesa Ho, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+
+#Overview
+
+We propose to create a linear model that can predict residential home prices in Ames, Iowa based on several explanatory variables.  This project is a practical example of using real world data that consists of a mix of different data types - nominal, ordinal, discrete, and continuous variables. 
+
+Our final project will incorporate the following topics covered in this course: 
+
+- Variable manipulation
+- Outlier identification
+- Data analysis and interpretation
+- Model building
+- Model evaluation
+
+#Description of Dataset
+
+The data set describes the sale of individual residential property in Ames, Iowa from 2006 to 2010 and contains 2,919 observations.  There are 80 explanatory variables (23 nominal, 23 ordinal, 14 discrete, and 20 continuous) involved in assessing home values.
+
+The 23 nominal variables identify various types of dwellings, materials, garages, and environmental conditions.
+
+The 23 ordinal variables range from 2 to 28 representing Streets (gravel or paved) and Neighborhoods (areas within the Ames city limits).
+
+The 14 discrete variables quantify the number of items for each house.  Items include the number of kitchens, bedrooms, bathrooms, garage spaces and their respective location if the house has more than one floor. 
+
+The 20 continuous variables are related to area dimensions for each house.  Variables include total dwelling square footage, total lot size, living area, and room dimensions. 
+
+Some important variables that may have strong correlation with sale price.
+
+- `MSZoning`: Identifies the general zoning classification of the sale.
+- `LotArea`:  Lot size in square feet.
+- `OverallQual`: Overall material and finish quality.
+- `TotalBsmtSF`: Total square feet of basement area.
+- `YearBuilt`: Original construction date.
+- `BedroomAbvGr`: Bedrooms above grade (does NOT include basement bedrooms).
+- `BsmtFullBath`:  Full bathrooms above grade.
+- `GarageCars`: Size of garage in car capacity.
+
+#Dataset Source
+
+Inspired by [`Kaggle Competition`](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), the data set is provided by Dean De Cock from Truman State University.  The raw data comes directly from the Iowa State Assessorʻs Office. The initial Excel file contained 113 variables describing 3,970 property sales that had occurred in Ames, Iowa between 2006 and 2010. 
+The variables were a mix of nominal, ordinal, continuous, and discrete variables used in calculation of assessed values and included physical property measurements in addition to computation variables used in the city’s assessment process. Variables that required specific housing or assessing knowledge or previous calculations were removed from the final dataset.  
+
+
+#Firstlook of the Data
+
+We load the data and check the first few values of the response variable.
+```{r, message=FALSE}
+library(readr)
+house_data = read_csv("HousePrices/train.csv")
+
+head(house_data[,c("SalePrice", "MSZoning", "LotArea", "OverallQual",
+                   "TotRmsAbvGrd", "YearBuilt", "BedroomAbvGr", "BsmtFullBath",
+                   "GarageCars")])
+price_model = lm(SalePrice ~ LotArea, data = house_data)
+```
+
+Let's fit the data with a simple regression model with SalePrice as response and log(LotArea) as predictor.
+```{r}
+price_model_log = lm(SalePrice ~ log(LotArea), data = house_data)
+```
+```{r, echo=FALSE}
+plot(SalePrice ~ log(LotArea), data = house_data, col = "grey", pch = 20,
+     main = "SalePrice by Log(LotArea)")
+abline(price_model_log, col = "darkorange", lwd = 3)
+```
+
+The regressin line does show some fit with the data.
+
+We use the corrplot package in combination with the cor() function to plot the correlations between selected predictors.
+
+```{r, echo=FALSE}
+library(corrplot)
+colunms = c("SalePrice", "LotArea", "MSSubClass", "MSZoning", "LotConfig")
+house_data_reg = with(house_data, data.frame(SalePrice, LotArea, 
+                                             MSSubClass = as.numeric(as.factor(MSSubClass)),
+                                             MSZoning = as.numeric(as.factor(MSZoning)), 
+                                             LotConfig = as.numeric(as.factor(LotConfig)),
+                                             Neighborhood = as.numeric(as.factor(Neighborhood)), 
+                                             BldgType = as.numeric(as.factor(BldgType)),
+                                             HouseStyle = as.numeric(as.factor(HouseStyle)),
+                                             OverallQual = as.numeric(as.factor(OverallQual)),
+                                             OverallCond = as.numeric(as.factor(OverallCond)),
+                                             YearBuilt, YearRemodAdd,
+                                             RoofStyle = as.numeric(as.factor(RoofStyle)),
+                                             ExterQual = as.numeric(as.factor(ExterQual)),
+                                             ExterCond = as.numeric(as.factor(ExterCond)),
+                                             TotalBsmtSF, FullBath, BedroomAbvGr, 
+                                             KitchenAbvGr, Fireplaces, GarageCars))
+
+corrplot(cor(house_data_reg), method="circle")
+```
+
+The test shows `OverallQual`, `TotalBsmtSF`, `YearBuilt`, `YearRemodAdd`, `ExterQual`, `FullBath`, `Fireplaces` has strong correlation with `SalePrice`.
+
+## Data Preprocessing 
+Change column name to comply with R variable definition
+```{r}
+BadNames =  c(FirstFlrSF = "1stFlrSF", SecondFlrSF = "2ndFlrSF", ThreeSsnPorch = "3SsnPorch")
+
+for (i in 1:length(BadNames)) {
+  colnames(house_data)[which(colnames(house_data) == BadNames[i])] = names(BadNames[i])
+}
+```
+- Convert categorical predictor to factor and make NA an extra value
+- Remove predictor with too many NAs (> 10%)
+- Replace categorical NA with
+
+```{r}
+#Combine FullBath and HalfBath
+house_data$Bath = house_data$FullBath + house_data$HalfBath * 0.5
+house_data = subset(house_data, select = -c(Id, FullBath, HalfBath))
+
+CategoricalNames = c("MSSubClass", "MSZoning", "Street", "Alley", "LotShape",
+            "LandContour", "Utilities", "LotConfig", "LandSlope", 
+            "Neighborhood", "Condition1", "Condition2", "BldgType", 
+            "HouseStyle", "OverallQual", "OverallCond", "RoofStyle", 
+            "RoofMatl", "Exterior1st", "Exterior2nd", "MasVnrType",
+            "ExterQual", "ExterCond", "Foundation", "BsmtQual", 
+            "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2", 
+            "Heating", "HeatingQC", "CentralAir", "Electrical", 
+#           "BsmtFullBath", "BsmtHalfBath", 
+#           "FullBath","HalfBath", 
+#           "BedroomAbvGr", "KitchenAbvGr",
+            "KitchenQual", "Functional", 
+#           "TotRmsAbvGrd",
+#            "Fireplaces",
+            "FireplaceQu", 
+            "GarageType","GarageFinish", 
+#           "GarageCars",
+            "GarageQual", "GarageCond", 
+            "PavedDrive", "PoolQC", "Fence", "MiscFeature", 
+            "SaleType", "SaleCondition")
+
+rm_index = c()
+for(i in 2:ncol(house_data)) {
+  nas = is.na(house_data[[i]])
+  
+  #Find predictors with too many NAs (> 10%)
+  if(sum(nas) / nrow(house_data) > 0.1) {
+    rm_index = c(rm_index, i)
+  } else {
+    if(colnames(house_data)[i] %in% CategoricalNames) { #Categorical predictor
+      #house_data[[i]][nas] = names(table(house_data[[i]])[which.max(table(house_data[[i]]))])
+      house_data[[i]] = factor(house_data[[i]], exclude = NULL)
+    } else{
+      if(sum(nas) > 0) {
+        print(colnames(house_data)[i])
+        print(mean(house_data[[i]][!nas]))
+        house_data[[i]][nas] = mean(house_data[[i]][!nas])
+      }
+    }
+  }
+}
+
+house_data = subset(house_data, select = -rm_index)
+```
+
+
+```{r, message=FALSE}
+library(lmtest)
+get_bp_decision = function(model, alpha) {
+  decide = unname(bptest(model)$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject")
+}
+
+get_sw_decision = function(model, alpha) {
+  decide = unname(shapiro.test(resid(model))$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject")
+}
+
+get_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+get_adj_r2 = function(model) {
+  summary(model)$adj.r.squared
+}
+
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+build_formula = function(response_name, predictor_names, interaction = 1) {
+  str_formula = paste(response_name, " ~ (")
+  
+  add_plus = FALSE
+  for (predictor_name in predictor_names) {
+    if(add_plus) str_formula = paste(str_formula, "+ ")
+    else add_plus = TRUE
+    
+    str_formula = paste(str_formula, predictor_name)
+  }
+  str_formula = paste(str_formula, ")")
+  
+  if(interaction > 1) str_formula = paste(str_formula, "^ ", interaction)
+  
+  as.formula(str_formula)
+}
+
+standardize = function (values) {
+  values / sqrt(sum((values - mean(values)) ^ 2) / length(values))
+}
+```
+
+Try model and check assumption and LOOCV RMSE
+
+Categorical predictors: MSSubClass, MSZoning, LandContour, LotConfig, LandSlope, Neighborhood, Condition1, Condition2, BldgType, OverallQual, OverallCond, RoofStyle, Exterior1st, Foundation, BsmtQual, BsmtExposure, KitchenQual, Functional, SaleCondition
+
+```{r}
+library(faraway)
+#full_model = lm(SalePrice ~ ., data = house_data)
+
+NumericNames = colnames(house_data)[!colnames(house_data) %in% CategoricalNames]
+
+c = cor(house_data[, NumericNames])["SalePrice",]
+SignificantPredictors = sort(c[c > 0.1 & c < 1], decreasing = TRUE)
+
+full_numeric_model = lm(as.formula(build_formula("log(SalePrice)", names(SignificantPredictors))), 
+                      data = house_data)
+
+start_model = lm(log(SalePrice) ~ GrLivArea + GarageCars + TotalBsmtSF + YearBuilt + YearRemodAdd, data = house_data)
+  
+good_vif_model = lm(as.formula(build_formula("SalePrice", names(vif(start_model)[vif(start_model) < 5]), 3)), data = house_data)
+
+Neighborhood_Model = lm(SalePrice ~ Neighborhood, data = house_data)
+cor(resid(start_model), resid(Neighborhood_Model))
+
+#model = lm(SalePrice ~ (YearBuilt + YearRemodAdd + MasVnrArea + BsmtFinSF1 + TotalBsmtSF +  GrLivArea + TotRmsAbvGrd + Fireplaces + GarageYrBlt + GarageCars  + WoodDeckSF + OpenPorchSF + Bath) ^ 3, data = house_data)
+
+#get_bp_decision(model, 0.05)
+#get_sw_decision(model, 0.05)
+#get_loocv_rmse(model)
+#get_adj_r2(model)
+```
+
+```{r}
+#summary(m)$coefficient[summary(m)$coefficient[,"Pr(>|t|)"] < 0.1,]
+#mod_back_aic = step(full_model, direction = "backward")
+```
+
+Weak Relation: 3SsnPorch,
+
+##Discussion
+- Whether we should make discrete variables in regression model a categorical predictors?
+
+The way to discern an interval/ratio variable is to ask if every unit increment in the variable indicates the same amount of increment in the context you wish you measure. For instance, the jump from 35 to 36 degrees is the same as the jump from 43 to 44; it's the same amount of temperature difference. Likewise, the jump from 100 to 101 subscribers is the same as the jump from 1009 to 1010 subscribers. As long as this is true, your regression coefficient of that independent variable will make sense, because you can legitimately interpret it as the slope of the regression line.
+
+General confusion appears when you mix in ordinal data, such as those 5-point "how satisfied are you?" questions. They are expressed in whole number, very easily to be confused with discrete data. However, each jump in the scale does not necessarily mean the same thing. E.g. a jump from "4: happy" to "5: very happy" is not necessarily the same as a jump from "1: very unhappy" to "2: unhappy." In that case, the variable should not be put into the regression as is, but treated differently (search "dummy variable in regression" to learn more.)
+
+- Competition result
+- Other linear approach
+
+##Appendix
+- [`Kaggle Competition`](https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
+- Book
+    - Applied Statistics with R by David Dalpiaz
+    - An Introduction to Statistical Learning with Applications in R by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani
+    
+
+lm(formula = log(SalePrice) ~ GrLivArea + GarageCars + TotalBsmtSF + YearBuilt + YearRemodAdd, data = house_data)
+
+m = lm(formula = SalePrice ~ GrLivArea + GarageCars + TotalBsmtSF + 
++     YearBuilt + YearRemodAdd + OverallQual + Neighborhood + SaleCondition + 
++     TotalBsmtSF:OverallQual + GrLivArea:Neighborhood, data = house_data)

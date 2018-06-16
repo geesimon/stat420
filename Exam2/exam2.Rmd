@@ -1,0 +1,55 @@
+- For this question, use the birthwt dataset from the MASS dataset. Consider the additive model given in the starter code. Use this model to provide an estimate of the mean difference between the birth weight of a baby born to a mother whose race is black and a baby born to a mother with whose race is other, for any weight and age of these mothers.
+
+For simplicity, you may consider the difference in either order. Simply report the magnitude of your estimate.
+
+
+```{r}
+library(MASS)
+m = lm(bwt ~ lwt + age + as.factor(race), data = birthwt)
+coef(m)
+coef(m)["as.factor(race)2"] - coef(m)["as.factor(race)3"] 
+#should be: abs(coef(m)["as.factor(race)2"] - coef(m)["as.factor(race)3"])
+```
+
+
+- Use the model you fit in Question 7 to predict the median value of owner-occupied homes in thousands of dollars when:
+
+The percentage of the population labeled “lower status” is 12%
+The average number of rooms per dwelling is 6
+
+```{r}
+library(MASS)
+# Your code here.
+m = lm( log(medv) ~ lstat + I(lstat ^ 2) + rm, data = Boston)
+exp(predict(m, data.frame(lstat = 0.12, rm = 6)))
+
+#lstat shoudl be 12!!!
+```
+
+
+- For this question, use the Boston dataset from the MASS dataset. Fit the model given in the starter code. Calculate the Cook’s distance of each observation used to fit the model. Find the observations that are considered “influential” according to the usual heuristic used in class.
+
+Refit the model without these observations. Use this model to predict medv for the observations that were left out. Using these predictions, which we will call y^i, calculate
+
+$$
+\sqrt{\frac{1}{n}\sum_i(y_i - \hat{y}_i) ^ 2}
+$$
+where
+
+n is the number of observations that were left out. (They were considered influential.)
+yi is the actual value of medv for the i-th value left out.
+
+```{r}
+library(MASS)
+fit = lm(medv ~ ., data = Boston)
+# Your code here.
+cd = cooks.distance(fit) 
+(model_fix = lm(medv ~ ., data = Boston, subset = cd <= 4 / length(cd)))
+y_left = subset(Boston, subset = cd > 4 / length(cd))
+(n = nrow(y_left))
+y_left_hat = predict(model_fix, y_left)
+sqrt(sum((y_left - y_left_hat) ^ 2) / n)
+
+#should be sqrt(sum((y_left$medv - y_left_hat) ^ 2) / n) 
+```
+

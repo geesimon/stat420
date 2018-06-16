@@ -1,0 +1,75 @@
+---
+title: "Team Project by Xiaoming Ji"
+author: "STAT 420, Summer 2017, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+We load the data and fit it with a simple regression model with SalePrice as response and LotArea as predictor.
+
+
+```{r, message=FALSE}
+library(readr)
+house_data = read_csv("HousePrices/train.csv")
+
+price_model = lm(SalePrice ~ LotArea, data = house_data)
+```
+
+We draw a plot to show the data relation and the fitted line.
+```{r, echo=FALSE}
+plot(SalePrice ~ LotArea, data = house_data, col = "grey", pch = 20,
+     main = "Price by LotArea")
+abline(price_model, col = "darkorange", lwd = 3)
+```
+
+The plot shows the data is gathers in the low range of LotArea. Let's try a log transforming the predictor and replot.
+
+```{r}
+price_model_log = lm(SalePrice ~ log(LotArea), data = house_data)
+```
+
+```{r, echo=FALSE}
+plot(SalePrice ~ log(LotArea), data = house_data, col = "grey", pch = 20,
+     main = "SalePrice by Log(LotArea)")
+abline(price_model_log, col = "darkorange", lwd = 3)
+```
+
+The new plot seems much better. 
+
+We use the corrplot package in combination with the cor() function to plot the correlations between data’s selected attributes.
+
+```{r, echo=FALSE}
+library(corrplot)
+colunms = c("SalePrice", "LotArea", "MSSubClass", "MSZoning", "LotConfig")
+house_data_reg = with(house_data, data.frame(SalePrice, LotArea, 
+                                             MSSubClass = as.numeric(as.factor(MSSubClass)),
+                                             MSZoning = as.numeric(as.factor(MSZoning)), 
+                                             LotConfig = as.numeric(as.factor(LotConfig)),
+                                             Neighborhood = as.numeric(as.factor(Neighborhood)), 
+                                             BldgType = as.numeric(as.factor(BldgType)),
+                                             HouseStyle = as.numeric(as.factor(HouseStyle)),
+                                             OverallQual = as.numeric(as.factor(OverallQual)),
+                                             OverallCond = as.numeric(as.factor(OverallCond)),
+                                             YearBuilt, YearRemodAdd,
+                                             RoofStyle = as.numeric(as.factor(RoofStyle)),
+                                             ExterQual = as.numeric(as.factor(ExterQual)),
+                                             ExterCond = as.numeric(as.factor(ExterCond)),
+                                             TotalBsmtSF, FullBath, BedroomAbvGr, 
+                                             KitchenAbvGr, Fireplaces, GarageCars))
+
+corrplot(cor(house_data_reg), method="circle")
+```
+
+The covariance test shows `OverallQual`, `TotalBsmtSF`, `YearBuilt`, `YearRemodAdd`, `ExterQual`, `FullBath`, `Fireplaces` has high relation with `SalePrice`.
+
+```{r}
+library(faraway)
+price_model_reg = lm(SalePrice ~ OverallQual + TotalBsmtSF + YearBuilt + 
+                       YearRemodAdd + ExterQual + FullBath + Fireplaces,
+                     data = house_data_reg)
+vif(price_model_reg)
+```
+

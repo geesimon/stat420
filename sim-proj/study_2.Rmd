@@ -1,0 +1,87 @@
+```{r, message=FALSE}
+library(readr)
+
+birthday = 19720816
+set.seed(birthday)
+
+BETA_0 = 0
+BETA_1 = 6
+BETA_2 = -3.5
+BETA_3 = 1.7
+BETA_4 = -1.1
+BETA_5 = 0.7
+
+FORMULA = list(y ~ x1, 
+              y ~ x1 + x2, 
+              y ~ x1 + x2 + x3,
+              y ~ x1 + x2 + x3 + x4,
+              y ~ x1 + x2 + x3 + x4 + x5, #Correct formula
+              y ~ x1 + x2 + x3 + x4 + x5 + x6,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7, 
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9)
+NUM_FORMULA = length(FORMULA)
+
+sim_data    = read_csv("study_2.csv")
+sample_size = nrow(sim_data)
+
+SIGMA     = c(1, 2, 4)
+NUM_SIGMA = length(SIGMA)
+
+NUM_SIMS = 500
+
+#allocate a rmse matrix for each formula
+train_rmse = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  train_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_train_rmse = data.frame(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+
+test_rmse  = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  test_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_test_rmse = matrix(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+```
+
+```{r}
+cal_rmse = function(y, y_hat) {
+  n = length(y)
+  e = y - y_hat
+  sqrt(sum(e ^ 2) / n)
+}
+
+for (f in 1:NUM_FORMULA) {
+  models = vector("list", NUM_FORMULA)
+  
+  for(s in 1:NUM_SIGMA) {
+    for(i in 1:NUM_SIMS) {
+      eps           = rnorm(sample_size, mean = 0 , sd = SIGMA[s])
+      sim_data$y    = BETA_0 + BETA_1 * sim_data$x1 + BETA_2 * sim_data$x2 + 
+                      BETA_3 * sim_data$x3 + BETA_4 * sim_data$x4 + BETA_5 * sim_data$x5 + 
+                      eps
+      
+      #Split data into train and test sets
+      train_index = sample(1:sample_size, sample_size/2)
+      train_data  = sim_data[train_index,]
+      test_data   = sim_data[-train_index,]
+      
+      #Train models and calculate RMSE
+      models[[f]] = lm(FORMULA[[f]], data = train_data)
+        
+      #Calculate RMSE for train data
+      train_rmse[[f]][s, i] = cal_rmse(train_data$y, models[[f]]$fitted.values)
+      
+      #Calculate RMSE for test data
+      test_y_hat = predict(models[[f]], newdata = test_data)
+      test_rmse[[f]][s, i] = cal_rmse(test_data$y, test_y_hat)
+    }
+    
+    #Calculate the average Train RMSE and average Test RMSE
+    mean_train_rmse[f, s] = mean(train_rmse[[f]][s,])
+    mean_test_rmse[f, s]  = mean(test_rmse[[f]][s,])
+  }
+}
+
+
+```

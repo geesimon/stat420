@@ -1,0 +1,308 @@
+---
+title: "Proposal: Residential Housing Price Prediction"
+author: "STAT 420, Summer 2017, Martynas Sapoka, Shailender Singh, Tesa Ho, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+
+#Overview
+
+We propose to create a linear model that can predict residential home prices in Ames, Iowa based on several explanatory variables.  This project is a practical example of using real world data that consists of a mix of different data types - nominal, ordinal, discrete, and continuous variables. 
+
+Our final project will incorporate the following topics covered in this course: 
+
+- Variable manipulation
+- Outlier identification
+- Data analysis and interpretation
+- Model building
+- Model evaluation
+
+#Description of Dataset
+
+The data set describes the sale of individual residential property in Ames, Iowa from 2006 to 2010 and contains 2,919 observations.  There are 80 explanatory variables (23 nominal, 23 ordinal, 14 discrete, and 20 continuous) involved in assessing home values.
+
+The 23 nominal variables identify various types of dwellings, materials, garages, and environmental conditions.
+
+The 23 ordinal variables range from 2 to 28 representing Streets (gravel or paved) and Neighborhoods (areas within the Ames city limits).
+
+The 14 discrete variables quantify the number of items for each house.  Items include the number of kitchens, bedrooms, bathrooms, garage spaces and their respective location if the house has more than one floor. 
+
+The 20 continuous variables are related to area dimensions for each house.  Variables include total dwelling square footage, total lot size, living area, and room dimensions. 
+
+Some important variables that may have strong correlation with sale price.
+
+- `MSZoning`: Identifies the general zoning classification of the sale.
+- `LotArea`:  Lot size in square feet.
+- `OverallQual`: Overall material and finish quality.
+- `TotalBsmtSF`: Total square feet of basement area.
+- `YearBuilt`: Original construction date.
+- `BedroomAbvGr`: Bedrooms above grade (does NOT include basement bedrooms).
+- `BsmtFullBath`:  Full bathrooms above grade.
+- `GarageCars`: Size of garage in car capacity.
+
+#Dataset Source
+
+Inspired by [`Kaggle Competition`](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), the data set is provided by Dean De Cock from Truman State University.  The raw data comes directly from the Iowa State Assessorʻs Office. The initial Excel file contained 113 variables describing 3,970 property sales that had occurred in Ames, Iowa between 2006 and 2010. 
+The variables were a mix of nominal, ordinal, continuous, and discrete variables used in calculation of assessed values and included physical property measurements in addition to computation variables used in the city’s assessment process. Variables that required specific housing or assessing knowledge or previous calculations were removed from the final dataset.  
+
+
+#Firstlook of the Data
+
+We load the data and check the first few values of the response variable.
+```{r, message=FALSE}
+library(readr)
+house_data = read_csv("HousePrices/train.csv")
+
+head(house_data[,c("SalePrice", "MSZoning", "LotArea", "OverallQual",
+                   "TotRmsAbvGrd", "YearBuilt", "BedroomAbvGr", "BsmtFullBath",
+                   "GarageCars")])
+price_model = lm(SalePrice ~ LotArea, data = house_data)
+```
+
+Let's fit the data with a simple regression model with SalePrice as response and log(LotArea) as predictor.
+```{r}
+price_model_log = lm(SalePrice ~ log(LotArea), data = house_data)
+```
+```{r, echo=FALSE}
+plot(SalePrice ~ log(LotArea), data = house_data, col = "grey", pch = 20,
+     main = "SalePrice by Log(LotArea)")
+abline(price_model_log, col = "darkorange", lwd = 3)
+```
+
+The regressin line does show some fit with the data.
+
+We use the corrplot package in combination with the cor() function to plot the correlations between selected predictors.
+
+```{r, echo=FALSE}
+library(corrplot)
+colunms = c("SalePrice", "LotArea", "MSSubClass", "MSZoning", "LotConfig")
+house_data_reg = with(house_data, data.frame(SalePrice, LotArea, 
+                                             MSSubClass = as.numeric(as.factor(MSSubClass)),
+                                             MSZoning = as.numeric(as.factor(MSZoning)), 
+                                             LotConfig = as.numeric(as.factor(LotConfig)),
+                                             Neighborhood = as.numeric(as.factor(Neighborhood)), 
+                                             BldgType = as.numeric(as.factor(BldgType)),
+                                             HouseStyle = as.numeric(as.factor(HouseStyle)),
+                                             OverallQual = as.numeric(as.factor(OverallQual)),
+                                             OverallCond = as.numeric(as.factor(OverallCond)),
+                                             YearBuilt, YearRemodAdd,
+                                             RoofStyle = as.numeric(as.factor(RoofStyle)),
+                                             ExterQual = as.numeric(as.factor(ExterQual)),
+                                             ExterCond = as.numeric(as.factor(ExterCond)),
+                                             TotalBsmtSF, FullBath, BedroomAbvGr, 
+                                             KitchenAbvGr, Fireplaces, GarageCars))
+
+corrplot(cor(house_data_reg), method="circle")
+```
+
+The test shows `OverallQual`, `TotalBsmtSF`, `YearBuilt`, `YearRemodAdd`, `ExterQual`, `FullBath`, `Fireplaces` has strong correlation with `SalePrice`.
+
+## Data Exploration 
+
+$## Look at data types ##$
+Check data types
+
+```{r, echo=FALSE}
+#str(house_data)
+```
+
+Replace NA with 0ʻs
+
+```{r}
+house_data[is.na(house_data)] <- 0
+```
+
+Change factors.
+
+```{r}
+factors = c("MSSubClass", "MSZoning", "Street", "Alley", "LotShape",
+            "LandContour", "Utilities", "LotConfig", "LandSlope", 
+            "Neighborhood", "Condition1", "Condition2", "BldgType", 
+            "HouseStyle", "OverallQual", "OverallCond", "RoofStyle", 
+            "RoofMatl", "Exterior1st", "Exterior2nd", "MasVnrType",
+            "ExterQual", "ExterCond", "Foundation", "BsmtQual", 
+            "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2", 
+            "Heating", "HeatingQC", "CentralAir", "Electrical",
+            "KitchenQual", "Functional", "FireplaceQu", "GarageType",
+            "GarageFinish", "GarageQual", "GarageCond", "PavedDrive",
+            "PoolQC", "Fence", "MiscFeature", "MoSold", "SaleType",
+            "SaleCondition")
+
+num_house_data = house_data
+for (name in factors){
+  num_house_data[, name] = as.numeric(as.factor(name))
+}
+
+f_data = data.frame(sapply(num_house_data[, factors], function(x) as.numeric(as.factor(x))))
+colnames(f_data) = factors
+```
+
+```{r}
+
+```
+
+
+
+$## Correlation pairs plot##$
+
+```{r}
+# number of corr plots
+house_cols = colnames(house_data)
+x = (length(house_cols)-1)/10
+
+for (i in 0:(x-1)){
+  #print(i)
+  #print(house_cols[(10*i + 1): (10*(i+1))])
+  pairs(num_house_data[, c(house_cols[(10*i+1):(10*(i+1))], "SalePrice")], col="dodgerblue")
+}
+
+```
+
+$## Examine non-factor variables ##$
+
+```{r}
+non_factors = c("LotFrontage", "LotArea", "YearBuilt", 
+                "YearRemodAdd", "MasVnrArea", "BsmtFinSF1",
+                "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF", 
+                "1stFlrSF", "2ndFlrSF", "LowQualFinSF", 
+                "GrLivArea", "BsmtFullBath", "BsmtHalfBath",
+                "FullBath", "HalfBath", "BedroomAbvGr", "KitchenAbvGr", 
+                "TotRmsAbvGrd", "Fireplaces", "GarageYrBlt",
+                "GarageCars", "GarageArea", "WoodDeckSF", 
+                "OpenPorchSF", "EnclosedPorch", "3SsnPorch", 
+                "ScreenPorch", "PoolArea", "MiscVal", "SalePrice")
+
+nf_data = data.frame(sapply(house_data[, non_factors], function(x) as.numeric(x)))
+colnames(nf_data) = non_factors
+nf_corr = cor(nf_data)
+sort(nf_corr["SalePrice",], decreasing=TRUE)
+```
+
+$## Histogram ##$
+
+Histograms of the non-factor variables that are significant.
+
+```{r}
+top_corrs = sort(nf_corr["SalePrice", ], decreasing=TRUE)[sort(nf_corr["SalePrice", ], decreasing=TRUE) > 0]
+top_corrs_name = names(top_corrs[2:length(top_corrs)])
+
+par(mfrow=c(3,3))
+for (name in top_corrs_name[1:9]){
+  hist(nf_data[,name], breaks=20, xlab=name, main="hist ", col="dodgerblue")
+}
+
+par(mfrow=c(3,3))
+for (name in top_corrs_name[10:18]){
+  hist(nf_data[,name], breaks=20, xlab=name, main="hist ", col="dodgerblue")
+}
+
+par(mfrow=c(3,3))
+for (name in top_corrs_name[19:25]){
+  hist(nf_data[,name], breaks=20, xlab=name, main="hist ", col="dodgerblue")
+}
+
+```
+
+$## SalePrice vs Top Correlated Features ##$
+
+```{r}
+par(mfrow=c(3,3))
+for (name in top_corrs_name[1:9]){
+  plot(nf_data[,name], house_data$SalePrice, xlab=name, ylab="SalePrice", col="blue")
+  p_mod = lm(house_data$SalePrice ~ nf_data[,name])
+  abline(coef(p_mod)[1], coef(p_mod)[2], col="orange", lwd=2)
+}
+
+par(mfrow=c(3,3))
+for (name in top_corrs_name[10:18]){
+  plot(nf_data[,name], house_data$SalePrice, xlab=name, ylab="SalePrice", col="blue")
+  p_mod = lm(house_data$SalePrice ~ nf_data[,name])
+  abline(coef(p_mod)[1], coef(p_mod)[2], col="orange", lwd=2)
+}
+
+par(mfrow=c(3,3))
+for (name in top_corrs_name[19:25]){
+  plot(nf_data[,name], house_data$SalePrice, xlab=name, ylab="SalePrice", col="blue")
+  p_mod = lm(house_data$SalePrice ~ nf_data[,name])
+  abline(coef(p_mod)[1], coef(p_mod)[2], col="orange", lwd=2)
+}
+```
+
+## Build Models
+
+$## Split Model into Train & Test Sets ##$
+
+```{r}
+set.seed(42)
+train_index = sample(1:nrow(house_data), nrow(house_data)*2/3) # randomly chosen observations for training
+train_data  = house_data[train_index, ]
+test_data   = house_data[-train_index, ]
+```
+
+
+$## Model w/ Top Correlated Predictors ##$
+
+```{r}
+top_corrs_data = train_data[ , c("SalePrice", top_corrs_name)]
+top_corrs_mod = lm(SalePrice ~ ., data=top_corrs_data)
+summary(top_corrs_mod)
+```
+
+Model with significant correlated predictors
+
+```{r}
+pvalues = coefficients(summary(top_corrs_mod))[,"Pr(>|t|)"]
+sig_names = names(pvalues[pvalues < 0.01])
+sig_names = sig_names[2:length(sig_names)]
+sig_data = top_corrs_data[, c(sig_names,"SalePrice")]
+sig_mod = lm(SalePrice ~ ., data=sig_data)
+summary(sig_mod)
+```
+
+## Test Models
+
+Compare models on test data using RMSE as metric.
+
+```{r}
+## function to calculate rmse
+rmse  = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2, na.rm=TRUE))
+}
+```
+
+
+```{r}
+
+## function to compare models using rmse 
+compareModels <- function(models, modelNames){
+  train_error = rep(0, length(modelNames))
+  test_error = rep(0, length(modelNames))
+  for (i in 1:length(modelNames)){
+    ## train errors
+    train_error[i] = rmse(train_data$SalePrice, predict(models[[ modelNames[i] ]], newdata=train_data))
+    ## test errors
+    test_error[i] = rmse(test_data$SalePrice, predict(models[[ modelNames[i] ]], newdata=test_data))
+  }
+  df = data.frame("models"=modelNames, "trainErrors"=train_error, "testErrors"=test_error)
+  return(df)
+}
+
+```
+
+## Results
+
+```{r}
+
+modelNames = c("topCorrMod", "sigMod")
+models = vector(mode="list", length = length(modelNames))
+models[["topCorrMod"]] = top_corrs_mod
+models[["sigMod"]] = sig_mod
+
+compareModels(models, modelNames)
+
+```
+

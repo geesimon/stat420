@@ -1,0 +1,163 @@
+```{r, message=FALSE}
+library(readr)
+
+birthday = 19720816
+set.seed(birthday)
+
+BETA_0 = 0
+BETA_1 = 6
+BETA_2 = -3.5
+BETA_3 = 1.7
+BETA_4 = -1.1
+BETA_5 = 0.7
+
+FORMULA = list(y ~ x1, 
+              y ~ x1 + x2, 
+              y ~ x1 + x2 + x3,
+              y ~ x1 + x2 + x3 + x4,
+              y ~ x1 + x2 + x3 + x4 + x5, #Correct formula
+              y ~ x1 + x2 + x3 + x4 + x5 + x6,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7, 
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8,
+              y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9)
+NUM_FORMULA = length(FORMULA)
+
+sim_data          = read_csv("study_2.csv")
+sample_size       = nrow(sim_data)
+
+SIGMA     = c(1, 2, 4)
+NUM_SIGMA = length(SIGMA)
+
+NUM_SIMS = 500
+
+#allocate a rmse matrix for each formula
+train_rmse = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  train_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_train_rmse = data.frame(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+
+test_rmse  = vector("list", NUM_FORMULA)
+for (i in 1:NUM_FORMULA) {
+  test_rmse[[i]] = matrix(0, nrow = NUM_SIGMA, ncol = NUM_SIMS)
+}
+mean_test_rmse = matrix(0, nrow = NUM_FORMULA, ncol = NUM_SIGMA)
+
+beta_0_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_1_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_2_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_3_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_4_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_5_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_6_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_7_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_8_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+beta_9_hat = matrix(0, nrow =  NUM_SIGMA, ncol = NUM_SIMS)
+```
+
+```{r}
+cal_rmse = function(y, y_hat) {
+  n = length(y)
+  e = y - y_hat
+  sqrt(sum(e ^ 2) / n)
+}
+  
+  models = vector("list", NUM_FORMULA)
+for (f in 1:NUM_FORMULA) {
+  
+  
+  for(s in 1:NUM_SIGMA) {
+    for(i in 1:NUM_SIMS) {
+      eps           = rnorm(sample_size, mean = 0 , sd = SIGMA[s])
+      sim_data$y    = BETA_0 + BETA_1 * sim_data$x1 + BETA_2 * sim_data$x2 + 
+                      BETA_3 * sim_data$x3 + BETA_4 * sim_data$x4 + BETA_5 * sim_data$x5 + 
+                      eps
+      
+      #Split data into train and test sets
+      train_index = sample(1:sample_size, nrow(sim_data)/2)
+      train_data  = sim_data[train_index,]
+      test_data   = sim_data[-train_index,]
+      
+      #Train models and calculate RMSE
+      models[[f]] = lm(FORMULA[[f]], data = train_data)
+        
+      #Calculate RMSE for train data
+      train_rmse[[f]][s, i] = cal_rmse(train_data$y, models[[f]]$fitted.values)
+  
+      #Calculate RMSE for test data
+      test_y_hat = predict(models[[f]], data = test_data)
+      test_rmse[[f]][s, i] = cal_rmse(test_data$y, test_y_hat)
+
+      
+      if(f == 9) {
+        beta_0_hat[s, i] = models[[f]]$coefficients[1]
+        beta_1_hat[s, i] = models[[f]]$coefficients[2]
+        beta_2_hat[s, i] = models[[f]]$coefficients[3]
+        beta_3_hat[s, i] = models[[f]]$coefficients[4]
+        beta_4_hat[s, i] = models[[f]]$coefficients[5]
+        beta_5_hat[s, i] = models[[f]]$coefficients[6]
+        beta_6_hat[s, i] = models[[f]]$coefficients[7]
+        beta_7_hat[s, i] = models[[f]]$coefficients[8]
+        beta_8_hat[s, i] = models[[f]]$coefficients[9]
+        beta_9_hat[s, i] = models[[f]]$coefficients[10]
+      }
+    }
+    
+    #Calculate the average Train RMSE and average Test RMSE
+    mean_train_rmse[f, s] = mean(train_rmse[[f]][s,])
+    mean_test_rmse[f, s]  = mean(test_rmse[[f]][s,])
+  }
+}
+```
+
+```{r fig.width = 12, fig.height = 12}
+par(mfrow = c(2,2))
+barnames = c("1", "2", "3","4", "5", "6","7", "8", "9" )
+x_train = c(1, 2, 3, 4, 5, 6, 7, 8, 9)
+x_test = c(1, 2, 3, 4, 5, 6, 7, 8, 9)
+x=c(x_train, x_test)
+for (i in 1:NUM_SIGMA){
+  y_train = t(mean_train_rmse)[i,]
+  y_test = t(mean_test_rmse)[i,]
+  y = c(y_train, y_test)
+
+  barplot(t(mean_test_rmse)[i,], names.arg = barnames,
+          xlab = "Models",
+          ylab = "Average RMSE",
+          main = substitute(sigma==value,list(value=SIGMA[i])),
+          col = "dodgerblue")
+  
+  barplot(t(mean_train_rmse)[i,], col = "grey", add = TRUE)
+}
+
+plot.new()
+plot.window(c(0,10), c(0,10))
+text(5, 0.5, substitute("RMSE with different " * sigma), 
+      col = "black", cex = 2)
+rect(0, 3, 2, 4, col = "dodgerblue")
+text(4, 3.5, "Test RMSE", cex = 1.5)
+rect(0, 5, 2, 6, col = "grey")
+text(4, 5.5, "Train RMSE", cex = 1.5)
+
+```
+
+```{r}
+  #plot(y_test ~ x_test, ylim = c(0, 16),
+  #     xlab = "Models", ylab = "Average RMSE",
+  #     col = "dodgerblue")
+
+  #lines(x, y, col = "darkorange", lwd = 3, type="b")
+  #lines(x_test, y_test,  col = "dodgerblue", lwd = 3)
+  #points(x_test[5], y_test[5], col="red", cex = 3, pch="X")
+  #points(x_train, y_train, col = "red", pch = "Y")
+  #lines(x_train, y_train, col = "darkorange", lwd = 3)
+  #points(x_train[5], y_train[5], col="red", cex = 3, pch="X")
+```
+
+
+```{r}
+(max(t(mean_test_rmse)[1,]) - min(t(mean_test_rmse)[1,]))/max(t(mean_test_rmse)[1,])
+(max(t(mean_test_rmse)[2,]) - min(t(mean_test_rmse)[2,]))/max(t(mean_test_rmse)[2,])
+(max(t(mean_test_rmse)[3,]) - min(t(mean_test_rmse)[3,]))/max(t(mean_test_rmse)[3,])
+```
+

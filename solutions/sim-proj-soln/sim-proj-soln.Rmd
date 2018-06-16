@@ -1,0 +1,642 @@
+---
+title: 'Linear Models: Three Simulation Studies'
+author: "David Dalpiaz"
+date: "Example Solution"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+    fig_width: 10
+    fig_height: 5
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+# library(knitr)
+# opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+# Introduction
+
+In this document we will perform three simulation studies related to linear regression.
+
+- **Study 1** will look at the distribution of various regression estimates.
+- **Study 2** will evaluate Test RMSE as a metric for selecting a model.
+- **Study 3** will investigate the power of the significance of regression test for SLR.
+
+# Study 1: Estimate Distributions
+
+In this simulation study we will investigate the distribution of a number of regression estimates. We will simulate from the model
+
+\[
+Y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \beta_3 x_{i3}  + \beta_4 x_{i4} + \epsilon_i
+\]
+
+where $\epsilon_i \sim N(0, \sigma^2)$ and
+
+- $\beta_0 = 2$,
+- $\beta_1 = 1$,
+- $\beta_2 = 1$,
+- $\beta_3 = 1$,
+- $\beta_4 = 1$.
+
+We will consider a sample size of $15$ and three possible levels of noise. That is three values of $\sigma$.
+
+- $n = 15$
+- $\sigma \in (1, 5, 10)$
+
+We use simulation to obtain an empirical distribution for each of the following estimates, for each of the three values of $\sigma$. For each value of $\sigma$ we use $3000$ simulations. For each simulation, we fit a regression model of the same form used to perform the simulation.
+
+- $\hat{\beta}_1$
+- $s_e^2$
+- $\hat{\text{E}}[Y \mid x_1 = -3, x_2 = 2.5, x_3 = 0.5, x_4 = 0]$
+
+Note that $\hat{\text{E}}[Y \mid x_1 = -3, x_2 = 2.5, x_3 = 0.5, x_4 = 0]$ is $\hat{y}(x_0)$ when $x_1 = -3$, $x_2 = 2.5$, $x_3 = 0.5$, and $x_4 = 0$. We use the $\text{E}[]$ notation to make the conditioning on $x$ values explicit.
+
+We use data found in [`study_1.csv`](study_1.csv) for the values of the predictors. These will be kept constant for the entirety of this study. We will simulate the `y` values, which are blank in this file.
+
+## Methods
+
+Here we show the most relevant `R` code for obtaining the simulated values. See the `.Rmd` files for additional `R` code not seen in this document. Specifically, we simulate a sample of size 15 a total of 3000 times. Each time, after generating the new $y$ data, we fit a model, and store the three estimates of interest. We also perform some calculations that will be useful for displaying and discussing the results.
+
+```{r, echo = FALSE}
+# clear enviroment
+rm(list = ls())
+
+# some  parameters
+sample_size = 15
+
+# data generation for project
+gen_sim_data = function(seed = 42, n = 400) {
+
+  set.seed(seed)
+
+  data.frame(
+    y  = rep(x = 0, times = n),
+    x1 = runif(n = n, min = -5, max = 1),
+    x2 = runif(n = n, min =  2, max = 3),
+    x3 = runif(n = n, min =  2, max = 3),
+    x4 = runif(n = n, min = -1, max = 1)
+  )
+  
+}
+
+# generate data
+sim_data = gen_sim_data(seed = 1337, n = sample_size)
+write.csv(sim_data, "study_1.csv", row.names = FALSE)
+```
+
+```{r, echo = FALSE}
+birthday = 18760613
+set.seed(birthday)
+```
+
+```{r}
+# read in predictor data
+sim_data = read.csv("study_1.csv")
+
+# some simulation parameters
+sample_size = 15
+num_sims    = 3000
+
+# x values for prediction
+x_0 = data.frame(x1 = -3, x2 = 2.5, x3 = 0.5, x4 = 0)
+
+# function for performing each individual simulation
+perform_sim = function(sigma = 5) {
+  
+  # simulate y data
+  sim_data$y = with(sim_data, 2 + x1 + x2 + x3 + x4 + 
+                    rnorm(n = sample_size, mean = 0, sd = sigma))
+
+  # fit model to simulated data
+  fit = lm(y ~ x1 + x2 + x3 + x4, data = sim_data)
+
+  # extract the three desired estimates
+  c(coef(fit)[2], summary(fit)$sigma ^ 2, predict(fit, x_0))
+}
+
+# get estimates for each sigma value
+sigma_01 = replicate(n = num_sims, perform_sim(sigma = 1))
+sigma_05 = replicate(n = num_sims, perform_sim(sigma = 5))
+sigma_10 = replicate(n = num_sims, perform_sim(sigma = 10))
+
+# some math, for use later
+x_0 = c(1, -3, 2.5, 0.5, 0)
+sigmas = c(1, 5, 10)
+X  = cbind(rep(x = 1, times = sample_size), 
+           sim_data$x1, sim_data$x2, sim_data$x3, sim_data$x4)
+C  = solve(t(X) %*% X)
+sd_beta_1_hat = sqrt(sigmas ^ 2 * C[1 + 1, 1 + 1])
+y =  crossprod(c(2, 1, 1, 1, 1), x_0)
+sd_y_hat  = sqrt(sigmas ^ 2 * t(x_0) %*% C %*% x_0)
+```
+
+## Results
+
+```{r, echo = FALSE}
+black = "#2C3E50"
+grey = "#ECF0F1"
+green = "#009999"
+
+par(mfrow = c(1, 3), oma = c(0, 0, 5, 0))
+hist(sigma_01[1, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(beta)[1]), main = expression(sigma ~ ' = 1'),
+     ylim = c(0, 2.5), col = grey, cex.main = 2)
+curve(dnorm(x, mean = 1, sd = sd_beta_1_hat[1]),
+      col = green, add = TRUE, lwd = 2)
+hist(sigma_05[1, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(beta)[1]), main = expression(sigma ~ ' = 5'),
+     ylim = c(0, 2.5), col = grey, cex.main = 2)
+curve(dnorm(x, mean = 1, sd = sd_beta_1_hat[2]),
+      col = green, add = TRUE, lwd = 2)
+hist(sigma_10[1, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(beta)[1]), main = expression(sigma ~ ' = 10'),
+     ylim = c(0, 2.5), col = grey, cex.main = 2)
+curve(dnorm(x, mean = 1, sd = sd_beta_1_hat[3]),
+      col = green, add = TRUE, lwd = 2)
+mtext(expression('Empirical Distributions of ' ~ hat(beta)[1]), outer = TRUE, cex = 1.5)
+```
+
+Here we plot histograms of each of the empirical distributions for $\hat{\beta}_1$. We add a curve for the true density. We use the same limits on the $y$-axis for each plot, to better demonstrate the difference in variability.
+
+```{r, echo = FALSE}
+par(mfrow = c(1, 3), oma = c(0, 0, 5, 0))
+hist(sigma_01[2, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(s[e]^2), main = expression(sigma ~ ' = 1'), col = grey, cex.main = 2)
+curve(dchisq((15 - 5) * x / sigmas[1] ^ 2, df = 15 - 5) / sigmas[1] ^ 2 * (15 - 5),
+      add = TRUE, lwd = 2, col = green)
+hist(sigma_05[2, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(s[e]^2), main = expression(sigma ~ ' = 5'), col = grey, cex.main = 2)
+curve(dchisq((15 - 5) * x / sigmas[2] ^ 2, df = 15 - 5) / sigmas[2] ^ 2 * (15 - 5),
+      add = TRUE, lwd = 2, col = green)
+hist(sigma_10[2, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(s[e]^2), main = expression(sigma ~ ' = 10'), col = grey, cex.main = 2)
+curve(dchisq((15 - 5) * x / sigmas[3] ^ 2, df = 15 - 5) / sigmas[3] ^ 2 * (15 - 5),
+      add = TRUE, lwd = 2, col = green)
+mtext(expression('Empirical Distributions of ' ~ s[e]^2), outer = TRUE, cex = 1.5)
+```
+
+Here we plot histograms of each of the empirical distributions for $s_e^2$. We add a curve for the true density.
+
+```{r, echo = FALSE}
+par(mfrow = c(1, 3), oma = c(0, 0, 5, 0))
+hist(sigma_01[3, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(y)), main = expression(sigma ~ ' = 1'),
+     ylim = c(0, 0.22), col = grey, cex.main = 2)
+curve(dnorm(x, mean = y, sd = sd_y_hat[1]),
+      col = green, add = TRUE, lwd = 2)
+hist(sigma_05[3, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(y)), main = expression(sigma ~ ' = 5'),
+     ylim = c(0, 0.22), col = grey, cex.main = 2)
+curve(dnorm(x, mean = y, sd = sd_y_hat[2]),
+      col = green, add = TRUE, lwd = 2)
+hist(sigma_10[3, ], breaks = 25, border = black, prob = TRUE, 
+     xlab = expression(hat(y)), main = expression(sigma ~ ' = 10'),
+     ylim = c(0, 0.22), col = grey, cex.main = 2)
+curve(dnorm(x, mean = y, sd = sd_y_hat[3]),
+      col = green, add = TRUE, lwd = 2)
+mtext(expression('Empirical Distributions of ' ~ hat(y)), outer = TRUE, cex = 1.5)
+```
+
+Lastly, we plot histograms of each of the empirical distributions for $\hat{y}$. We add a curve for the true density. We again use the same limits for $y$ on each plot.
+
+For each of these nine situations, we know the true values.
+
+|               | $\beta_1$ | $\sigma^2$ | $\text{E}[Y \mid X = x_0]$ |
+|---------------|-----------|------------|----------------------------|
+| $\sigma = 1$  | 1         | 1          | 2                          |
+| $\sigma = 5$  | 1         | 25         | 2                          |
+| $\sigma = 10$ | 1         | 100        | 2                          |
+
+Using simulation, we *estimate* the means of each of these quantities using the empirical distribution.
+
+|               | $\hat{\text{E}}[\hat{\beta}_1]$ | $\hat{\text{E}}[s_e^2]$   | $\hat{\text{E}}[\hat{y}(x_0)]$ |
+|---------------|---------------------------------|---------------------------|--------------------------------|
+| $\sigma = 1$  | `r rowMeans(sigma_01)[1]`       | `r rowMeans(sigma_01)[2]` | `r rowMeans(sigma_01)[3]`      |
+| $\sigma = 5$  | `r rowMeans(sigma_05)[1]`       | `r rowMeans(sigma_05)[2]` | `r rowMeans(sigma_05)[3]`      |
+| $\sigma = 10$ | `r rowMeans(sigma_10)[1]`       | `r rowMeans(sigma_10)[2]` | `r rowMeans(sigma_10)[3]`      |
+
+## Discussion
+
+First, we should note that based on the plots, the simulated empirical distributions match the expected true distributions. In this case these are:
+
+For $\hat{\beta}_1$
+
+\[
+\hat{\beta}_1 \sim N(\beta_2 = 1, \ \sigma^2 \cdot C_{11})
+\]
+
+where $C_{11}$ is the correct element from the matrix $C = \left(X^\top X\right)^{-1}$.
+
+For $s_e^2$
+
+\[
+\frac{(n - p)s_e^2}{\sigma^2} \sim \chi^2_{n - p} 
+\]
+
+where $p = 5$, the number of $\beta$ parameters in the model.
+
+For $\hat{y}(x_0)$
+
+\[
+\hat{y}(x_0) \sim N(x_0^\top\beta, \ \sigma^2 \cdot x_0^\top C x_0)
+\]
+
+where $x_0 = [1, -3, 2.5, 0.5, 0]$ and $\beta = [2, 1, 1, 1, 1]^\top$. Thus $x_0^\top\beta = 2$.
+
+In each case, the **central tendancy** (mean) of the estimator is unaffected by changing the noise parameter $\sigma$. Also, for each the **variability** (variance) increases as the noise parameter $\sigma$ is increased. We see this both in the true distributions, as well as the simulated empirical distributions. Note the wildly different $x$-axes in each of the plots.
+
+Also note that the $\hat{\text{E}}[\hat{y}(x_0)]$ are not nearly as close to their true values as the other estimates. However, there is indeed no pattern based on the $\sigma$ value. Also, if we performed additional simulations, these values would move closer to the true values. You could easily re-run this document after increasing `num_sims` in order to verify.
+
+## Instructor Comments
+
+- I've made a general attempt throughout this document to show reasonable code (in methods) and hide plotting code (in results). Generally, for a report like this, the code to generate the simulations is informative. For plots, the graphics themselves are informative, while the code to generate them, not as much. (The somewhat sloppy code to produce these graphics can be found in the `.Rmd` file.)
+
+- The discussion question were meant to hint at possible topics to discuss, and were only suggestions. They were not necessarily meant to be answered directly.
+
+# Study 2: RMSE for Selection?
+
+Can a split test-train split and Test RMSE be used to select the "best" model? In this simulation study we will investigate how well this procedure works. Since splitting the data is random, we don't expect it to work correctly each time. We could get unlucky. But averaged over many attempts, we should expect it to select the appropriate model.
+
+We will simulate from the model
+
+\[
+Y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \beta_3 x_{i3} + \beta_4 x_{i4} + \beta_5 x_{i5} + \epsilon_i
+\]
+
+where $\epsilon_i \sim N(0, \sigma^2)$ and
+
+- $\beta_0 = 0$,
+- $\beta_1 = 6$,
+- $\beta_2 = -3.5$,
+- $\beta_3 = 1.7$,
+- $\beta_4 = -1.1$,
+- $\beta_5 = 0.7$.
+
+We will consider a sample size of $600$ and three possible levels of noise. That is, three values of $\sigma$.
+
+- $n = 600$
+- $\sigma \in (1, 2, 4)$
+
+We use data found in [`study_2.csv`](study_2.csv) for the values of the predictors. These will be kept constant for the entirety of this study. The `y` values in this data are a blank placeholder.
+
+Each time we simulate the data, we will randomly split the data into train and test sets of equal sizes (300 observations for training, 300 observations for testing).
+
+For each, we fit **nine** models, with forms:
+
+- `y ~ x1`
+- `y ~ x1 + x2`
+- `y ~ x1 + x2 + x3`
+- `y ~ x1 + x2 + x3 + x4`
+- `y ~ x1 + x2 + x3 + x4 + x5`, the correct form of the model
+- `y ~ x1 + x2 + x3 + x4 + x5 + x6`
+- `y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7`
+- `y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8`
+- `y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9`
+
+For each model, we then calculate Train and Test RMSE.
+
+\[
+\text{RMSE}(\text{model, data}) = \sqrt{\frac{1}{n} \sum_{i = 1}^{n}(y_i - \hat{y}_i)^2}
+\]
+
+## Methods
+
+```{r, echo = FALSE}
+# clear enviroment
+rm(list = ls())
+```
+
+```{r, echo = FALSE}
+sample_size = 600
+
+gen_sim_data = function(seed = 42, n = 400) {
+  
+  set.seed(seed)
+  x = runif(n = n, min = -1, max = 1)
+  
+  data.frame(
+    y  = rep(x = 0, times = n),
+    x1 = runif(n = n, min = -5, max = 1),
+    x2 = x,
+    x3 = x ^ 2,
+    x4 = runif(n = n, min = 0, max = 1),
+    x5 = runif(n = n, min = 0, max = 1),
+    x6 = runif(n = n, min = 0, max = 1),
+    x7 = runif(n = n, min = 0, max = 1),
+    x8 = runif(n = n, min = 0, max = 1),
+    x9 = runif(n = n, min = 0, max = 1)
+  )
+  
+}
+
+# generate data
+sim_data = gen_sim_data(seed = 1337, n = sample_size)
+write.csv(sim_data, "study_2.csv", row.names = FALSE)
+```
+
+```{r}
+# read in predictor data
+sim_data = read.csv("study_2.csv")
+
+# some simulation parameters
+sample_size = 600
+num_sims    = 500
+num_models  = 9
+```
+
+Here we create a specific function for RMSE that will be useful for our model fitting strategy.
+
+```{r}
+rmse = function(model, data) {
+
+  actual= data$y
+  predicted = predict(model, data)
+  sqrt(mean((actual - predicted) ^ 2))
+  
+}
+```
+
+```{r, echo = FALSE}
+birthday = 18760613
+set.seed(birthday)
+```
+
+We write a function for each simulation.
+
+```{r}
+perform_sim = function(sigma = 1) {
+  
+  # simulate y data
+  sim_data$y = with(sim_data, 0 + 6 * x1 + -3.5 * x2 + 1.7 * x3 + -1.1 * x4 + 0.7 * x5 + 
+                    rnorm(n = sample_size, mean = 0, sd = sigma))
+  
+  # test-train split the data  
+  test_index = sample(x = sample_size, size = round(sample_size / 2))
+  sim_test   = sim_data[test_index, ]
+  sim_train  = sim_data[-test_index, ]
+  
+  model_list = list(
+    fit1 = lm(y ~ x1, data = sim_train),
+    fit2 = lm(y ~ x1 + x2, data = sim_train),
+    fit3 = lm(y ~ x1 + x2 + x3, data = sim_train),
+    fit4 = lm(y ~ x1 + x2 + x3 + x4, data = sim_train),
+    fit5 = lm(y ~ x1 + x2 + x3 + x4 + x5, data = sim_train),
+    fit6 = lm(y ~ x1 + x2 + x3 + x4 + x5 + x6, data = sim_train),
+    fit7 = lm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7, data = sim_train),
+    fit8 = lm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8, data = sim_train),
+    fit9 = lm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9, data = sim_train)
+  )
+  
+  c(train_rsme = sapply(model_list, rmse, sim_train),
+    test_rsme  = sapply(model_list, rmse, sim_test))
+  
+}
+```
+
+We then run the simulations for the varying noise levels.
+
+```{r}
+rmses_01 = replicate(n = num_sims, perform_sim(sigma = 1))
+rmses_02 = replicate(n = num_sims, perform_sim(sigma = 2))
+rmses_04 = replicate(n = num_sims, perform_sim(sigma = 4))
+```
+
+## Results
+
+```{r, echo = FALSE}
+ave_rmses_01 = apply(rmses_01, 1, mean)
+ave_rmses_02 = apply(rmses_02, 1, mean)
+ave_rmses_04 = apply(rmses_04, 1, mean)
+
+results = data.frame(
+  model_size        = 1:9,
+  ave_train_rmse_01 = ave_rmses_01[1:num_models],
+  ave_test_rmse_01  = ave_rmses_01[(num_models + 1):(num_models * 2)],
+  ave_train_rmse_02 = ave_rmses_02[1:num_models],
+  ave_test_rmse_02  = ave_rmses_02[(num_models + 1):(num_models * 2)],
+  ave_train_rmse_04 = ave_rmses_04[1:num_models],
+  ave_test_rmse_04  = ave_rmses_04[(num_models + 1):(num_models * 2)]
+)
+rownames(results) = NULL
+```
+
+```{r, echo = FALSE}
+black = "#2C3E50"
+grey = "#ECF0F1"
+green = "#009999"
+purple = "#990073"
+
+par(mfrow = c(1, 3), oma = c(0, 0, 5, 0))
+with(results, {
+  plot(model_size, ave_train_rmse_01, type = "b", 
+       ylim = c(min(ave_train_rmse_01), max(ave_test_rmse_01)), col = green, lwd = 2,
+       xlab = "Model Size", ylab = "Average RMSE", main = expression(sigma ~ ' = 1'))
+  lines(model_size, ave_test_rmse_01, col = purple, type = "b", lwd = 2)
+  legend("topright", c("Train", "Test"), col = c(green, purple), lty = 1, lwd = 2)
+
+})
+with(results, {
+  plot(model_size, ave_train_rmse_02, type = "b", 
+       ylim = c(min(ave_train_rmse_02), max(ave_test_rmse_02)), col = green, lwd = 2,
+       xlab = "Model Size", ylab = "Average RMSE", main = expression(sigma ~ ' = 2'))
+  lines(model_size, ave_test_rmse_02, col = purple, type = "b", lwd = 2)
+  legend("topright", c("Train", "Test"), col = c(green, purple), lty = 1, lwd = 2)
+})
+with(results, {
+  plot(model_size, ave_train_rmse_04, type = "b", 
+       ylim = c(min(ave_train_rmse_04), max(ave_test_rmse_04)), col = green, lwd = 2,
+       xlab = "Model Size", ylab = "Average RMSE", main = expression(sigma ~ ' = 4'))
+  lines(model_size, ave_test_rmse_04, col = purple, type = "b", lwd = 2)
+  legend("topright", c("Train", "Test"), col = c(green, purple), lty = 1, lwd = 2)
+})
+mtext(expression('Train versus Test RMSE'), outer = TRUE, cex = 1.5)
+```
+
+```{r, echo = FALSE}
+par(mfrow = c(1, 3), oma = c(0, 0, 5, 0))
+barplot(table(factor(apply(rmses_01[(num_models + 1):(num_models * 2),], 2, which.min), levels = 1:9)), xlab = "Model Size", ylab = "Selected", main = expression(sigma ~ ' = 1'), col = grey)
+barplot(table(factor(apply(rmses_02[(num_models + 1):(num_models * 2),], 2, which.min), levels = 1:9)), xlab = "Model Size", ylab = "Selected", main = expression(sigma ~ ' = 2'), col = green)
+barplot(table(factor(apply(rmses_04[(num_models + 1):(num_models * 2),], 2, which.min), levels = 1:9)), xlab = "Model Size", ylab = "Selected", main = expression(sigma ~ ' = 4'), col = purple)
+mtext(expression('Distributions of Selected Model Size'), outer = TRUE, cex = 1.5)
+```
+
+## Discussion
+
+Immediately, we notice that this procedure does not always select the correct model. Based on the Train vs Test plots, we do see that, **on average**, the procedure correctly selects the true model of size four when the noise parameter is $\sigma = 1$ or $\sigma = 2$. For the largest noise level, even on average, the procedure is not correct. We also notice that, as the noise increases, the difference between train and test error increases.
+
+```{r}
+which.min(results$ave_test_rmse_01)
+which.min(results$ave_test_rmse_02)
+which.min(results$ave_test_rmse_04)
+```
+
+In the low noise case, $\sigma = 1$, we can see from the barplot, that most often the correct model is selected, but still not always. Also, the vast majority of cases contain all the the correct variables, but with some additional unneeded variables. Only very infrequently does the procedure select a model which is missing any of the truly significant variables. 
+
+With $\sigma = 2$, performance is similar, but now, more often there are truly significant variables left out of the chosen model.
+
+For $\sigma = 4$, no longer is the correct model selected most often. Also again the number of truly significant variables left out of the chosen model increases. This noise level is too high for the given signal to be detected. (Magnitude of the $\beta$ parameters.)
+
+## Instructor Comments
+
+- In the coming weeks, we will look at more formalized methods of variable selection.
+- Cross-validation will reduce the variability of this procedure.
+- Note that here we are restricting ourselves to a certain set of well chosen model options. This was for convenience in this project, but we'll drop this restriction soon.
+    - We only considered nested models. Because of this, selecting the correct number of predictors is equivalent to selecting the correct model. In general you could select the correct number, but choose the wrong predictors. When this is the case, we also need to be aware of false positives and false negatives. We'll investigate this when we return to more formalized methods of variable selection.
+    - Additionally, the strength of signal decreased for each additional predictor.
+
+# Simulation Study 3, Power
+
+In this simulation study we will investigate the **power** of the significance of regression test for simple linear regression. 
+
+\[
+H_0: \beta_{1} = 0 \ \text{vs} \ H_1: \beta_{1} \neq 0
+\]
+
+Recall, we had defined the *significance* level, $\alpha$, to be the probability of a Type I error.
+
+\[
+\alpha = P[\text{Reject } H_0 \mid H_0 \text{ True}] = P[\text{Type I Error}]
+\]
+
+Similarly, the probability of a Type II error is often denoted using $\beta$; however, this should not be confused with a regression parameter.
+
+\[
+\beta = P[\text{Fail to Reject } H_0 \mid H_1 \text{ True}] = P[\text{Type II Error}]
+\]
+
+*Power* is the probability of rejecting the null hypothesis when the null is not true, that is, the alternative is true and $\beta_{1}$ is non-zero.
+
+\[
+\text{Power} = 1 - \beta = P[\text{Reject } H_0 \mid H_1 \text{ True}]
+\]
+
+Essentially, power is the probability that a signal of a particular strength will be detected. Many things affect the power of a test. In this case, some of those are:
+
+- Sample Size
+- $x$ values
+- Signal Strength, $\beta_1$
+- Noise Level, $\sigma$
+- Significance Level, $\alpha$
+
+We'll investigate the latter three.
+
+To do so we will simulate from the model
+
+\[
+Y_i = \beta_0 + \beta_1 x_i + \epsilon_i
+\]
+
+where $\epsilon_i \sim N(0, \sigma^2)$.
+
+For simplicity, we will let $\beta_0 = 0$, thus $\beta_1$ is essentially controlling the amount of "signal." We will then consider different signals and noises:
+
+- $\beta_1 \in (0, 0.1, 0.2, 0.3, \ldots 3)$
+- $\sigma \in (1, 2, 4)$
+
+As well as three significance levels:
+
+- $\alpha \in (0.01, 0.05, 0.10)$
+
+## Methods
+
+```{r, echo = FALSE}
+# clear enviroment
+rm(list = ls())
+```
+
+We use the following $x$ values for all simulations. (Thus, $x$ values and sample size are not be investigated.)
+
+```{r}
+x_values = seq(0, 5, length = 25)
+```
+
+In an effort to keep our analysis "tidy," we utilize the `ggplot2` and `tidyr` packages.
+
+```{r}
+library(ggplot2)
+library(tidyr)
+```
+
+We first write a function that will perform the individual simulations.
+
+```{r}
+get_p_val = function(x, beta_0, beta_1, sigma = 1) {
+  n = length(x)
+  y = beta_0 + beta_1 * x + rnorm(n, mean = 0, sd = sigma)
+  fit = lm(y ~ x)
+  summary(fit)$coefficients[2, 4]
+}
+```
+
+```{r, echo = FALSE}
+birthday = 18760613
+set.seed(birthday)
+```
+
+We then setup a data frame to store the results, and run all of the simulations.
+
+```{r}
+results = expand.grid(
+  beta = seq(0, 3, by = 0.1),
+  sigma = c(1, 2, 4),
+  `0.01` = 0,
+  `0.05` = 0,
+  `0.10` = 0
+)
+
+for(i in 1:nrow(results)) {
+  p_vals = replicate(n = 5000,
+                     get_p_val(x = x_values,
+                               beta_0 = 0,
+                               beta_1 = results$beta[i],
+                               sigma = results$sigma[i]))
+  results$`0.01`[i] = mean(p_vals < 0.01)
+  results$`0.05`[i] = mean(p_vals < 0.05)
+  results$`0.10`[i] = mean(p_vals < 0.10)
+}
+```
+
+## Results
+
+We first plot power as a function of the signal strength for each noise level. The three curves in each plot represent a different significance level.
+
+```{r, echo = FALSE}
+results = gather(results, alpha, power, `0.01`:`0.10`)
+ggplot(results, aes(x = beta, y = power, group = alpha, color = alpha)) + geom_line() + geom_point() + facet_grid(. ~ sigma)
+```
+
+We then plot power as a function of the signal to noise ratio, again for each noise level. The three curves in each plot represent a different significance level.
+
+```{r, echo = FALSE}
+ggplot(results, aes(x = beta / sigma, y = power, group = alpha, color = alpha)) + geom_line() + geom_point() + facet_grid(. ~ sigma)
+```
+
+Lastly, we plot power as a function of the signal strength for each significance level. The three curves in each plot represent a different noise level.
+
+```{r, echo = FALSE}
+results$sigma = as.factor(results$sigma)
+ggplot(results, aes(x = beta, y = power, group = sigma, color = sigma)) + geom_line() + geom_point() + facet_grid(. ~ alpha)
+```
+
+## Discussion
+
+The results are somewhat unsurprising.
+
+- $\beta_1$: As $\beta_1$ increases, power increases. The stronger the signal, the easier it is to detect.
+- $\sigma$: As $\sigma$ increases, power decreases. The more noise, the harder it is to detect signal.
+- $\alpha$: As $\alpha$ decreases, the power decreases. A higher $\alpha$ makes it easier to detect a signal, but at the cost of more false signals, that is, Type I Errors.
+
+We actually see in the second plot that the signal to noise ratio is the actual driver of power.
+
+When $\beta_1 = 0$, which we did simulate, the result is not actually power, but significance, and the results indeed match the specified significance levels.
+
+Note that 5000 simulations were used for each $\beta_1$ and $\sigma$ combination to create smoother curves. With fewer simulations there is some variability in estimating the power which could result in a decrease when there should be an increase.
+
+## Instructor Comments
+
+- `ggplot2` and `tidyr` are part of the larger [`tidyverse`](http://tidyverse.org/) which encompasses a number of useful packages.
+- You could have performed simulations for each $\beta_1$, $\sigma$, **and** $\alpha$ combination, but this would be three times slower. Instead the simulations for each $\beta_1$ and $\sigma$ combination should be performed, then compared to each $\alpha$.

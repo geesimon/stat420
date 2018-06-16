@@ -1,0 +1,388 @@
+---
+title: "Week 8 - Homework"
+author: "STAT 420, Summer 2017, Xiaoming Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+```
+
+## Exercise 1 (Writing Functions)
+
+**(a)** Write a function named `diagnostics` that takes as input the arguments:
+
+- `model`, an object of class `lm(), that is a model fit via `lm()`
+- `pcol`, for controlling point colors in plots, with a default value of `black`
+- `lcol`, for controlling line colors in plots, with a default value of `white`
+- `alpha`, the significance level of any test that will be performed inside the function, with a default value of `0.05`
+- `plotit`, a logical value for controlling display of plots with default value `TRUE`
+- `testit`, a logical value for controlling outputting the results of tests with default value `TRUE`
+
+The function should output:
+
+- A list with two elements when `testit` is `TRUE`:
+    - `p_val`, the p-value for the Shapiro-Wilk test for assesing normality
+    - `decision`, the decision made when performing the Shapiro-Wilk test using the `alpha` value input to the function. "Reject" if the null hypothesis is rejected, otherwise "Fail to Reject".
+- Two plots, side-by-side, when `plotit` is `TRUE`:
+    - A fitted versus residuals plot that adds a horizontal line at $y = 0$, and labels the $x$-axis "Fitted" and the $y$-axis "Residuals". The points and line should be colored according to the input arguments. Give the plot a title. 
+    - A Normal Q-Q plot of the residuals that adds the appropriate line using `qqline()`. The points and line should be colored according to the input arguments. Be sure the plot has a title. 
+
+```{r}
+diagnostics = function(model, pcol = "black", lcol = "white", alpha = 0.05, plotit = TRUE, testit = TRUE) {
+  if(plotit) {
+    par(mfrow = c(1, 2))
+    
+    plot(fitted(model), resid(model), col = pcol, pch = 20,
+         xlab = "Fitted", ylab = "Residuals", main = "Fitted vs Residuals Plot")
+    abline(h = 0, col = lcol, lwd = 2)
+    
+    qqnorm(resid(model), main = "Normal Q-Q Plot", col = pcol)
+    qqline(resid(model), col = lcol, lwd = 2)
+  }
+  if(testit) {
+    p = shapiro.test(resid(model))[["p.value"]]
+    list(p_val = p, decision = ifelse(p < alpha, "Reject", "Fail to Reject"))    
+  }
+}
+```
+
+**(b)** Run the following code.
+
+```{r}
+set.seed(42)
+data1 = data.frame(x = runif(n = 20, min = 0, max = 10),
+                   y = rep(x = 0, times = 20))
+data1$y = with(data1, 5 + 2 * x + rnorm(n = 20))
+fit1 = lm(y ~ x, data = data1)
+
+data2 = data.frame(x = runif(n = 30, min = 0, max = 10),
+                   y = rep(x = 0, times = 30))
+data2$y = with(data2, 2 + 1 * x + rexp(n = 30))
+fit2 = lm(y ~ x, data = data2)
+
+data3 = data.frame(x = runif(n = 40, min = 0, max = 10),
+                   y = rep(x = 0, times = 40))
+data3$y = with(data3, 2 + 1 * x + rnorm(n = 40, sd = x))
+fit3 = lm(y ~ x, data = data3)
+
+diagnostics(fit1, plotit = FALSE)$p_val
+diagnostics(fit1, testit = FALSE, pcol = "darkorange", lcol = "dodgerblue")
+
+diagnostics(fit2, plotit = FALSE)$decision
+diagnostics(fit2, testit = FALSE, pcol = "grey", lcol = "green")
+
+diagnostics(fit3)
+```
+
+## Exercise 2 (Swiss Fertility Data)
+
+For this exercise, we will use the `swiss` data, which can be found in the `faraway` package. After loading the `faraway` package, use `?swiss` to learn about this dataset.
+
+```{r, message = FALSE, warning = FALSE}
+library(faraway)
+```
+
+**(a)** Fit an additive multiple regression model with `Fertility` as the response and the remaining variables in the `swiss` dataset as predictors. Report the $R^2$ for this model.
+
+**Solution**
+```{r}
+swiss_add = lm(Fertility ~ ., data = swiss)
+summary(swiss_add)$r.squared
+```
+
+
+**(b)** Check the constant variance assumption for this model. Do you feel it has been violated? Justify your answer.
+
+**Solution**
+```{r, message=FALSE}
+library(lmtest)
+bptest(swiss_add)["p.value"]
+```
+The p-value of Breusch-Pagan test **Failed to reject** the Homoscedasticity hypothesis at $\alpha = 0.05$. Therefore, the constant variance assumption is **not violated**.
+
+**(c)** Check the normality assumption for this model. Do you feel it has been violated? Justify your answer.
+
+**Solution**
+```{r}
+diagnostics(swiss_add, pcol = "darkorange", lcol = "dodgerblue")
+```
+
+According to the plot and the p-value of Shapiro-Wilk Test, we **Failed to reject** the null hypothesis that the errors follows a normal distribution at $\alpha = 0.05$. Therefore, the normality assumption is **not violated**.
+
+**(d)** Check for any high leverage observations. Report any observations you determine to have high leverage.
+
+**Solution**
+```{r}
+hatvalues(swiss_add)[hatvalues(swiss_add) > 2 * mean(hatvalues(swiss_add))]
+```
+
+
+**(e)** Check for any influential observations. Report any observations you determine to be influential.
+
+**Solution**
+```{r}
+cd = cooks.distance(swiss_add)
+cd[cd > 4 / length(cd)]
+```
+
+**(f)** Refit the additive multiple regression model without any points you identified as influential. Compare the coefficients of this fitted model to the previously fitted model.
+
+**Solution**
+```{r}
+swiss_add_fix = lm(Fertility ~ ., data = swiss, subset = cd <= 4 / length(cd))
+coef(swiss_add_fix)
+coef(swiss_add)
+```
+We see after removal of the influential points, some coefficients are changed significantly.
+
+**(g)** Create a data frame that stores the observations that were "removed" because they were influential. Use the two models you have fit to make predictions with these observations. Comment on the difference between these two sets of predictions.
+
+**Solution**
+```{r}
+swiss_fix = swiss[cd > 4 / length(cd),]
+swiss_fix[, "Fertility"]
+(swiss_add_response     = predict(swiss_add, newdata = swiss_fix))
+(swiss_add_fix_response = predict(swiss_add_fix, newdata = swiss_fix))
+
+sqrt(mean((swiss_fix$Fertility - swiss_add_response) ^ 2))
+sqrt(mean((swiss_fix$Fertility - swiss_add_fix_response) ^ 2))
+
+```
+
+The RMSEs of these two models show that the original model has better prediction. It is understandable because the original model take these removed points into account when calculating the coefficients.
+
+## Exercise 3 (Why Bother?)
+
+**Why** do we care about violations of assumptions? One key reason is that the distributions of the parameters that we have used are all reliant on these assumptions. When the assumptions are violated, the distributional results are not correct, so our tests are garbage. **Garbage In, Garbage Out!**
+
+Consider the following setup that we will use for the remainder of the exercise. We choose a sample size of 100.
+
+```{r}
+n = 100
+set.seed(42)
+x_1 = runif(n, -2, 2)
+x_2 = runif(n, 0, 5)
+```
+
+Consider the model,
+
+\[
+Y = 5 + 0 x_1 + 1 x_2 + \epsilon.
+\]
+
+That is,
+
+- $\beta_0$ = 5
+- $\beta_1$ = 0
+- $\beta_2$ = 1
+
+We now simulate `y_1` in a manner that does not violate any assumptions, which we will verify. In this case $\epsilon \sim N(0, 1).$
+
+```{r}
+set.seed(420)
+y_1 = 5 + 0 * x_1 + 1 * x_2 + rnorm(n = n, mean = 0, sd = 1)
+fit_1 = lm(y_1 ~ x_1 + x_2)
+qqnorm(resid(fit_1), col = "dodgerblue")
+qqline(resid(fit_1), col = "darkorange", lwd = 2)
+shapiro.test(resid(fit_1))
+```
+
+Then, we simulate `y_2` in a manner that **does** violate assumptions, which we again verify. In this case $\epsilon \sim N(0, \sigma = |x_1|).$
+
+```{r}
+set.seed(42)
+y_2 = 5 + 0 * x_1 + 1 * x_2  + rnorm(n = n, mean = 0, sd = abs(x_1))
+fit_2 = lm(y_2 ~ x_1 + x_2)
+qqnorm(resid(fit_2), col = "dodgerblue")
+qqline(resid(fit_2), col = "darkorange", lwd = 2)
+shapiro.test(resid(fit_2))
+```
+
+**(a)** Use the following code after changing `birthday` to your birthday.
+
+```{r}
+num_sims = 2500
+p_val_1 = rep(0, num_sims)
+p_val_2 = rep(0, num_sims)
+birthday = 19720816
+set.seed(birthday)
+```
+
+Repeat the above process of generating `y_1` and `y_2` as defined above, and fit models with each as the response `2500` times. Each time, store the p-value for testing,
+
+\[
+\beta_1 = 0,
+\]
+
+using both models, in the appropriate variables defined above. (You do not need to use a data frame as we have in the past. Although, feel free to modify the code to instead use a data frame.)
+
+**Solution**
+```{r}
+for (i in 1:num_sims) {
+  y_1 = 5 + 0 * x_1 + 1 * x_2 + rnorm(n = n, mean = 0, sd = 1)
+  y_2 = 5 + 0 * x_1 + 1 * x_2  + rnorm(n = n, mean = 0, sd = abs(x_1))
+  p_val_1[i] = summary(lm(y_1 ~ x_1 + x_2))$coefficient["x_1", "Pr(>|t|)"] 
+  p_val_2[i] = summary(lm(y_2 ~ x_1 + x_2))$coefficient["x_1", "Pr(>|t|)"] 
+}
+
+```
+
+**(b)** What proportion of the `p_val_1` values are less than 0.01? Less than 0.05? Less than 0.10? What proportion of the `p_val_2` values are less than 0.01? Less than 0.05? Less than 0.10? Arrange your results in a table. Briefly explain these results.
+
+**Solution**
+```{r}
+library("knitr")
+eval_1 = c(sum(p_val_1 < 0.01) / length(p_val_1), 
+           sum(p_val_1 < 0.05) / length(p_val_1),
+           sum(p_val_1 < 0.1) / length(p_val_1))
+eval_2 = c(sum(p_val_2 < 0.01) / length(p_val_2), 
+           sum(p_val_2 < 0.05) / length(p_val_2),
+           sum(p_val_2 < 0.1) / length(p_val_2))
+table_data = data.frame()
+kable(data.frame(eval_1, eval_2), col.names = c("p_value(sd = 1)", "p_value(sd = abs(x_1))"),
+      caption = "Normal vs NonNormal")
+```
+
+We see the model with $\epsilon \sim N(0, \sigma = |x_1|)$ has larger proportion to reject the null hypothesis ($\beta_1 = 0$) at any $\alpha$ (0.01, 0.05, 0.10) and thus is less accurate on prediting $\beta_1$ value.
+
+## Exercise 4 (TV Is Healthy?)
+
+For this exercise, we will use the `tvdoctor` data, which can be found in the `faraway` package. After loading the `faraway` package, use `?tvdoctor` to learn about this dataset.
+
+```{r, message = FALSE, warning = FALSE}
+library(faraway)
+```
+
+**(a)** Fit a simple linear regression with `life` as the response and `tv` as the predictor. Plot a scatterplot and add the fitted line. Check the assumptions of this model.
+
+**Solution**
+```{r}
+tvdoc_1 = lm(life ~ tv, data = tvdoctor)
+plot(life ~ tv, data = tvdoctor, col = "grey", pch = 20,
+     main = "Degree 1")
+abline(tvdoc_1, col = "darkorange", lwd = 3)
+diagnostics(tvdoc_1, testit = FALSE, pcol = "darkorange", lcol = "dodgerblue")
+
+shapiro.test(resid(tvdoc_1))[["p.value"]]
+bptest(tvdoc_1)["p.value"]
+```
+
+- According to the Fitted versus Residuals Plot, at some points of the fitted value, the mean of the residuals is not roughly 0. We would say the **Linearity assumption is invalid**.
+- Breusch-Pagan Test Failed to reject null hypothesis at $\alpha=0.05$. **Constant variance assumption is valid**.
+- Shapiro-Wilk Test Failed to reject null hypothesis at $\alpha=0.05$. **Normality assumption is valid**.
+
+**(b)** Fit higher order polynomial models of degree 3, 5, and 7. For each, plot a fitted versus residuals plot and comment on the constant variance assumption. Based on those plots, which of these three models do you think are acceptable? Use a statistical test(s) to compare the models you just chose. Based on the test, which is preferred? Check the normality assumption of this model. Identify any influential observations of this model.
+
+**Solution**
+```{r, fig.height=8, fig.width=8}
+plot_FR = function(model, title = "Fitted vs Residuals Plot", pcol = "black", 
+                   lcol = "red") {
+    plot(fitted(model), resid(model), col = pcol, pch = 20,
+         xlab = "Fitted", ylab = "Residuals", main = title)
+    abline(h = 0, col = lcol, lwd = 2)
+}
+
+tvdoc_3 = lm(life ~ poly(tv, degree = 3, raw = TRUE), data = tvdoctor)
+tvdoc_5 = lm(life ~ poly(tv, degree = 5, raw = TRUE), data = tvdoctor)
+tvdoc_7 = lm(life ~ poly(tv, degree = 7, raw = TRUE), data = tvdoctor)
+
+par(mfrow = c(2, 2))
+plot_FR(tvdoc_1, title = "Degree 1", pcol = "darkorange", lcol = "dodgerblue")
+plot_FR(tvdoc_3, title = "Degree 3", pcol = "darkorange", lcol = "dodgerblue")
+plot_FR(tvdoc_5, title = "Degree 5", pcol = "darkorange", lcol = "dodgerblue")
+plot_FR(tvdoc_7, title = "Degree 7", pcol = "darkorange", lcol = "dodgerblue")
+```
+
+- According to the plots, at degree of 3, we still see a lot of points where for a fitted value, the spread of the residuals are not roughly the same, thus the **constant variance assumption is invalid**.
+- The model of degree 5 looks much better, so does the model of degree 7. Thus, we would say the constant variance assumption is somewhat valid. Models for degree 5 and 7 are acceptable.
+
+```{r}
+bptest(tvdoc_5)["p.value"]
+bptest(tvdoc_7)["p.value"]
+
+shapiro.test(resid(tvdoc_5))[["p.value"]]
+shapiro.test(resid(tvdoc_7))[["p.value"]]
+```
+
+Breusch-Pagan Test and Shapiro-Wilk Test show model of degree 7 has larger p-values. Which means this model has high probability to follow the constant variance and normality assumptions. Thus model of degree 7 is preferred. The normality assumption is also valid according to the Shapiro-Wilk Test.
+
+To identify influential observations of this model,
+```{r}
+cd = cooks.distance(tvdoc_7)
+cd[cd > 4 / length(cd)]
+```
+
+## Exercise 5 (Brains)
+
+The data set `mammals` from the `MASS` package contains the average body weight in kilograms $(x)$ and the average brain weight in grams $(y)$ for $62$ species of land mammals. Use `?mammals` to learn more.
+
+```{r, message = FALSE, warning = FALSE}
+library(MASS)
+```
+
+**(a)** Plot average brain weight $(y)$ versus average body weight $(x)$.
+
+**(b)** Fit a linear model with `brain` as the response and `body` as the predictor. Test for significance of regression. Do you think this is an appropriate model?
+
+**Solution**
+```{r}
+mammals_add = lm(brain ~ body, data = mammals)
+plot(brain ~ body, data = mammals, col = "grey", pch = 20,
+     main = "Brain and Body Weights for Land Mammals")
+abline(mammals_add, col = "darkorange", lwd = 3)
+summary(mammals_add)$coefficient
+```
+p-value of `body` for significance of regression test is extremely low but p-value of intercept is relatively large. If we look at the plot above, we can see most data is concentrated in the lower range of `body` and `brain`, therefore, this model is not appropriate.
+
+**(c)** Since the body weights do range over more than one order of magnitude and are strictly positive, we will use $\log(\text{body weight})$ as our *predictor*, with no further justification. (Recall, *the log rule*: if the values of a variable range over more than one order of magnitude and the variable is strictly positive, then replacing the variable by its logarithm is likely to be helpful.) Use the Box-Cox method to verify that $\log(\text{brain weight})$ is then a "recommended" transformation of the *response* variable. That is, verify that $\lambda = 0$ is among the "recommended" values of $\lambda$ when considering,
+
+\[
+g_\lambda(y) = \beta_0 + \beta_1 \log(\text{body weight})+\epsilon
+\]
+
+Include the relevant plot in your results, using an appropriate zoom onto the relevant values.
+
+**Solution**
+```{r}
+mammals_add_log = lm(brain ~ log(body), data = mammals)
+boxcox(mammals_add_log, plotit = TRUE, lambda = seq(-0.1, 0.1, length = 20))
+```
+
+Using the Box-Cox method, we see that  $\lambda = 0$ is both in the interval, and extremely close to the maximum, which suggests a transformation of the form $\log(\text{brain weight})$ 
+
+**(d)** Fit the model justified in part **(c)**. That is, fit a model with $\log(\text{brain weight})$ as the response and $\log(\text{body weight})$ as a predictor. Plot $\log(\text{brain weight})$ versus $\log(\text{body weight})$ and add the regression line to the plot. Does a linear relationship seem to be appropriate here?
+
+**Solution**
+```{r}
+mammals_add_log_log = lm(log(brain) ~ log(body), data = mammals)
+plot(log(brain) ~ log(body), data = mammals, col = "grey", pch = 20,
+     main = "Log(Brain) and Log(Body) Weights for Land Mammals")
+abline(mammals_add_log_log, col = "darkorange", lwd = 3)
+summary(mammals_add_log_log)$coefficient
+```
+
+We see after log transformation, the regression line fit the data very well. The test for significance of regression also show better results. Therefore, this model is appropriate.
+
+**(e)** Use a Q-Q plot to check the normality of the errors for the model fit in part **(d)**.
+
+**Solution**
+```{r}
+qqnorm(resid(mammals_add_log_log), main = "Normal Q-Q Plot", col = "dodgerblue")
+qqline(resid(mammals_add_log_log), col = "darkorange", lwd = 2)
+```
+
+The normality assumption is valid according to the plot (although it does have some slightly fat tails).
+
+**(f)** Use the model from part **(d)** to predict the brain weight of a male Snorlax which has a body weight of 1014.1 pounds. (A Snorlax would be a mammal, right?) Construct a 90% prediction interval.
+
+**Solution**
+```{r}
+exp(predict(mammals_add_log_log, newdata = data.frame(body = 1014.1), interval = "prediction", level = 0.9))
+```
+

@@ -1,0 +1,224 @@
+---
+title: "Week 1 - Homework"
+author: "STAT 420, Summer 2017, Simon Ji"
+date: ''
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+
+## Exercise 1
+
+For this exercise, we will use the `diabetes` dataset from the `faraway` package.
+
+**(a)** Install and load the `faraway` package. **Do not** include the installation command in your `.Rmd` file. (If you do it will install the package every time you knit your file.) **Do** include the command to load the package into your environment.
+
+```{r}
+library("faraway")
+```
+
+
+**(b)** Coerce the data to be a tibble instead of a data frame. (You will need the `tibble` package to do so.) How many observations are in this dataset? How many variables? Who are the individuals in this dataset?
+
+```{r}
+library("tibble")
+t_diabetes = as_tibble(diabetes)
+
+```
+
+- How many observations are in this dataset?  **Answer: `r nrow(t_diabetes)`**
+- How many variables? **Answer: `r ncol(t_diabetes)`**
+- Who are the individuals in this dataset? **Answer: African Americans in central Virginia**
+
+**(c)** Which variables are factor variables?
+**Answer: location, gender, frame**
+
+**(d)** What is the mean [HDL](https://en.wikipedia.org/wiki/High-density_lipoprotein) level (High Density Lipoprotein) of individuals in this sample?
+**Answer: `r mean(t_diabetes[!is.na(t_diabetes$hdl),]$hdl)`**
+
+**(e)** What is the standard deviation of total cholesterol of individuals in this sample?
+**Answer: `r sd(t_diabetes[!is.na(t_diabetes$chol),]$chol)`**
+
+**(f)** What is the range of ages of individuals in this sample?
+**Answer: `r min(t_diabetes$age)` to `r max(t_diabetes$age)`**
+
+**(g)** What is the mean HDL of females in this sample?
+**Answer: `r mean(t_diabetes[t_diabetes$gender=="female" & !is.na(t_diabetes$hdl),]$hdl)`**
+
+**(h)** Create a scatter plot of HDL (y-axis) vs weight (x-axis). Use a non-default color for the points. (Also, be sure to give the plot a title and label the axes appropriately.) Based on the scatter plot, does there seem to be a relationship between the two variables? Briefly explain. 
+
+```{r}
+plot(hdl ~ weight, data = t_diabetes,
+     ylab = "HDL",
+     xlab = "Weight",
+     main = "HDL vs weight",
+     col  = "dodgerblue",
+     pch  = 20,
+     cex  = 2)
+```
+
+- **Answer: Yes. According to the plot, we can see that as HDL decreases, weight increases**
+
+
+**(i)** Create a scatter plot of total cholesterol (y-axis) vs weight (x-axis). Use a non-default color for the points. (Also, be sure to give the plot a title and label the axes appropriately.) Based on the scatter plot, does there seem to be a relationship between the two variables? Briefly explain.
+
+```{r}
+plot(weight ~ chol, data = t_diabetes,
+     ylab = "Weight",
+     xlab = "Cholesterol",
+     main = "Cholesterol vs Weight",
+     col  = "dodgerblue",
+     pch  = 20,
+     cex  = 2)
+```
+
+- **Answer: No. We can't find the relationship between cholesterol and weight. They scattered evenly in the median area.**
+
+
+**(j)** Create side-by-side boxplots for HDL by gender. Use non-default colors for the plot. (Also, be sure to give the plot a title and label the axes appropriately.) Based on the boxplot, does there seem to be a difference between HDL level and gender? Briefly explain.
+
+```{r}
+boxplot(hdl ~ gender, data = t_diabetes,
+        xlab   = "Gender",
+        ylab   = "HDL",
+        main   = "HDL by gender",
+        pch    = 20,
+        cex    = 2,
+        col    = "darkorange",
+        border = "dodgerblue")
+```
+
+- **Answer: It is different. Female has higher mediean HDL than Male. And Famale's HDL IQR is smaller than Male, which means the standard deviation of Femals' HDL is smaller**
+
+
+## Exercise 2
+
+For this exercise we will use the data stored in [`nutrition.csv`](nutrition.csv). It contains the nutritional values per serving size for a large variety of foods as calculated by the USDA. It is a cleaned version totaling 5138 observations and is current as of September 2015.
+
+The variables in the dataset are:
+
+- `ID` 
+- `Desc` - Short description of food
+- `Water` - in grams
+- `Calories` - in kcal
+- `Protein` - in grams
+- `Fat` - in grams
+- `Carbs` - Carbohydrates, in grams
+- `Fiber` - in grams
+- `Sugar` - in grams
+- `Calcium` - in milligrams
+- `Potassium` - in milligrams
+- `Sodium` - in milligrams
+- `VitaminC` - Vitamin C, in milligrams
+- `Chol` - Cholesterol, in milligrams
+- `Portion` - Description of standard serving size used in analysis
+
+```{r, message=FALSE, include=FALSE}
+library(readr)
+nutrition = read_csv("nutrition.csv")
+```
+
+**(a)** Create a histogram of `Calories`. Do not modify `R`'s default bin selection. Make the plot presentable. Describe the shape of the histogram. Do you notice anything unusual?
+
+
+```{r}
+hist(nutrition$Calories,
+     xlab = "Calories",
+     main = "Histogram of Nutrition Calories",
+     col    = "dodgerblue",
+     border = "darkorange")
+```
+
+- **Answer: The shape is right skewed. 2 unusual high value bins found at: (350-400) and  than (850-900)**
+
+
+**(b)** Create a scatter plot of calories (y-axis) vs protein (x-axis). Make the plot presentable. Do you notice any trends? Do you think that knowing only the protein content of a food, you could make a good prediction of the calories in the food?
+
+
+```{r}
+plot(Calories ~ Protein, data = nutrition,
+     ylab = "Calories",
+     xlab = "Protein",
+     main = "Calories vs Protein",
+     col  = "dodgerblue",
+     pch  = 20,
+     cex  = 2)
+```
+
+- **Answer: Based on the plot, as protein increases, calories tends to fall around average value. However, we can't make good prediction of calories according to protein. Because according to the plot, one protein value map to a range of calories values (very broad range if protein value is small).**
+
+
+**(c)** Create a scatter plot of `Calories` (y-axis) vs `4 * Protein + 4 * Carbs + 9 * Fat + 2 * Fiber` (x-axis). Make the plot presentable. You will either need to add a new variable to the data frame, or, use the `I()` function in your formula in the call to `plot()`. If you are at all familiar with nutrition, you may realize that this formula calculates the calorie count based on the protein, carbohydrate, and fat values. You'd expect then that the result here is a straight line. Is it? If not, can you think of any reasons why it is not?
+
+```{r}
+
+nutrition["CalculatedCalories"] = 4 * nutrition$Protein + 4 * nutrition$Carbs + 9 * nutrition$Fat + 2 * nutrition$Fiber
+
+plot(Calories ~ CalculatedCalories, data = nutrition,
+     ylab = "Calories",
+     xlab = "4 * Protein + 4 * Carbs + 9 * Fat + 2 * Fiber",
+     main = "Calories vs 4 * Protein + 4 * Carbs + 9 * Fat + 2 * Fiber",
+     col  = "dodgerblue",
+     pch  = 20,
+     cex  = 2)
+```
+
+- **Answer: It is not a straight line (and is forked to 2 lines). The reason I guess is the formula `4 * Protein + 4 * Carbs + 9 * Fat + 2 * Fiber` is oversimplified and cannot fit well for all food. For example: the food with 0 content of protein or carbs or fat or fiber, may need to used a different calculation . **
+
+## Exercise 3
+
+For each of the following parts, use the following vectors:
+
+```{r}
+a = 1:10
+b = 10:1
+c = rep(1, times = 10)
+d = 2 ^ (1:10)
+```
+
+**(a)** Write a function called `sum_of_squares`.
+
+- Arguments:
+    - A vector of numeric data `x`.
+- Output:
+    - The sum of the squares of the elements of the vector. $\sum_{i = 1}^n x_i^2$
+    
+Provide your function, as well as the result of running the following code:
+
+```{r, echo=TRUE}
+sum_of_squares = function(x) {
+  sum(x ^ 2)  
+}
+```
+```{r}
+sum_of_squares(x = a)
+sum_of_squares(x = c(c, d))
+```
+
+**(b)** Write a function called `rms_diff`.
+
+- Arguments:
+    - A vector of numeric data `x`.
+    - A vector of numeric data `y`.
+- Output:
+    - $\sqrt{\frac{1}{n}\sum_{i = 1}^n (x_i - y_i)^{2}}$
+    
+Provide your function, as well as the result of running the following code:
+
+```{r, echo=TRUE}
+rms_diff = function(x, y) {
+  #Use another variable z to calculate the correct n
+  #so that it works both on rms_diff(a, 1) and rms_diff(1, a)
+  z = x - y 
+  sqrt(sum(z ^ 2) / length(z))
+}
+```
+```{r}
+rms_diff(x = a, y = b)
+rms_diff(x = d, y = c)
+rms_diff(x = d, y = 1)
+rms_diff(x = a, y = 0) ^ 2 * length(a)
+```
+
